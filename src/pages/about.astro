@@ -1,0 +1,21 @@
+---
+import Base from '../layouts/Base.astro';
+import { site } from '../series';
+---
+<Base title="About" description="About Karthik Ithakota, Dynamics 365 and Power Platform Solution Architect.">
+  <div class="page wrap measure prose">
+    <h1>About</h1>
+    <p>I'm <strong>Sai Krishna Karthik Ithakota</strong>, a Technical Lead and Solution Architect working on Dynamics 365 and the Power Platform, with 8.5 years of experience building CRM solutions for enterprise clients.</p>
+    <p>My work sits where CRM meets the rest of the enterprise: Dataverse design, plugins and custom APIs, Azure integration with Functions and Service Bus, and data migration with ADF, SSIS and KingswaySoft. I'm currently growing into CRM + Data + AI architecture.</p>
+    <h2>Certifications</h2>
+    <ul>
+      <li>Microsoft Certified: Power Platform Solution Architect Expert (PL-600)</li>
+      <li>Microsoft Certified: Power Platform Developer Associate (PL-400)</li>
+      <li>Microsoft Dynamics 365 Customer Engagement (MB2-716)</li>
+    </ul>
+    <h2>Why this blog</h2>
+    <p>Most tutorials stop when the demo works. Production starts after that. Every guide here follows a realistic business scenario through what breaks on day two, how to fix it, and how to explain the decision in an interview.</p>
+    <h2>Contact</h2>
+    <p><a href={site.linkedin}>LinkedIn</a> · <a href={`mailto:${site.email}`}>{site.email}</a></p>
+  </div>
+</Base>

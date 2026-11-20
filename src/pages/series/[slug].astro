@@ -1,0 +1,25 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { SERIES, url } from '../../series';
+export async function getStaticPaths() { return SERIES.map(s => ({ params: { slug: s.slug }, props: { s } })); }
+const { s } = Astro.props;
+const posts = (await getCollection('posts')).filter(p => p.data.series === s.slug).sort((a, b) => a.data.part - b.data.part);
+const byPart = new Map(posts.map(p => [p.data.part, p]));
+---
+<Base title={s.title} description={s.description} image={posts[0]?.data.cover}>
+  <div class="page wrap measure">
+    <p class="eyebrow">Series</p>
+    <h1>{s.title}</h1>
+    <p style="font-size:19px;color:var(--ink-soft)">{s.description}</p>
+    <blockquote style="border-left:4px solid var(--accent);padding-left:16px;margin:24px 0">{s.tagline}</blockquote>
+    <ol class="parts">
+      {Array.from({ length: s.plannedParts }, (_, i) => i + 1).map(n => {
+        const p = byPart.get(n);
+        return <li>{p
+          ? <a href={url(`/posts/${p.id}/`)}><span class="num">Part {n}</span><span>{p.data.title}</span></a>
+          : <span class="soon"><span class="num">Part {n}</span><span>Coming soon</span></span>}</li>;
+      })}
+    </ol>
+  </div>
+</Base>

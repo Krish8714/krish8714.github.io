@@ -1,0 +1,24 @@
+---
+import Base from '../layouts/Base.astro';
+import { site } from '../series';
+---
+<Base title="Mentoring" description="1:1 mentoring for Dynamics 365 and Power Platform developers: interview preparation, architecture reviews and career guidance.">
+  <div class="page wrap measure">
+    <p class="eyebrow">1:1 mentoring</p>
+    <h1>Get unstuck, prepare for the interview, or review your design</h1>
+    <p style="font-size:19px;color:var(--ink-soft)">Practical sessions for Dynamics 365 and Power Platform developers moving into senior and architect roles.</p>
+    <div class="pricing">
+      <div class="price-card">
+        <h3>Focused session</h3>
+        <div class="price">₹1,499 <small style="font-size:14px;color:var(--ink-faint)">/ USD 25</small></div>
+        <ul><li>One topic, 45–60 minutes</li><li>Plugin, integration or security design question</li><li>Mock interview round with feedback</li></ul>
+      </div>
+      <div class="price-card">
+        <h3>Deep-dive package</h3>
+        <div class="price">₹3,999 <small style="font-size:14px;color:var(--ink-faint)">/ USD 60</small></div>
+        <ul><li>Three sessions</li><li>Project-story preparation for senior interviews</li><li>Architecture review of your solution</li><li>Resume and LinkedIn profile review</li></ul>
+      </div>
+    </div>
+    <p><a class="btn" href={site.linkedin}>Book via LinkedIn</a> <a class="btn ghost" href={`mailto:${site.email}?subject=Mentoring%20session`}>Email me</a></p>
+  </div>
+</Base>

@@ -1,0 +1,50 @@
+---
+import '../styles/global.css';
+import { site, url } from '../series';
+interface Props { title?: string; description?: string; image?: string; type?: string; }
+const { title, description = site.description, image, type = 'website' } = Astro.props;
+const fullTitle = title ? `${title} · ${site.name}` : site.title;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = image ? new URL(url(image), Astro.site).href : undefined;
+const path = Astro.url.pathname;
+const is = (p: string) => path.startsWith(url(p)) ? 'page' : undefined;
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{fullTitle}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonical} />
+  <link rel="icon" href={url('/favicon.svg')} type="image/svg+xml" />
+  <link rel="alternate" type="application/rss+xml" title={site.name} href={url('/rss.xml')} />
+  <meta property="og:type" content={type} />
+  <meta property="og:title" content={fullTitle} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={canonical} />
+  {ogImage && <meta property="og:image" content={ogImage} />}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="author" content={site.name} />
+  <slot name="head" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href={url('/')}>Karthik <span>Ithakota</span></a>
+      <nav class="nav" aria-label="Main">
+        <a href={url('/series/')} aria-current={is('/series')}>Series</a>
+        <a href={url('/mentoring/')} aria-current={is('/mentoring')}>Mentoring</a>
+        <a href={url('/about/')} aria-current={is('/about')}>About</a>
+      </nav>
+    </div>
+  </header>
+  <main><slot /></main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© {new Date().getFullYear()} {site.name}. Written from real Dynamics 365 projects.</span>
+      <span><a href={site.linkedin} rel="me">LinkedIn</a> · <a href={url('/rss.xml')}>RSS</a> · <a href={`mailto:${site.email}`}>Email</a></span>
+    </div>
+  </footer>
+</body>
+</html>

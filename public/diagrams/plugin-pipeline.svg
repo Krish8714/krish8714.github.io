@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" font-family="Inter, Segoe UI, Arial, sans-serif">
+  <title>One save through the Dataverse pipeline</title>
+  <rect width="900" height="380" fill="#ffffff"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6b66"/></marker>
+  </defs>
+  <g font-size="14" fill="#1f2a27">
+    <rect x="20" y="40" width="150" height="44" rx="8" fill="#eef4f1" stroke="#9fb8ad"/><text x="95" y="67" text-anchor="middle">Form save</text>
+    <rect x="20" y="100" width="150" height="44" rx="8" fill="#eef4f1" stroke="#9fb8ad"/><text x="95" y="127" text-anchor="middle">Excel import</text>
+    <rect x="20" y="160" width="150" height="44" rx="8" fill="#eef4f1" stroke="#9fb8ad"/><text x="95" y="187" text-anchor="middle">Web API / flow</text>
+  </g>
+  <g stroke="#5b6b66" stroke-width="1.6" fill="none" marker-end="url(#a)">
+    <path d="M170 62 L230 115"/><path d="M170 122 L230 122"/><path d="M170 182 L230 129"/>
+  </g>
+  <rect x="232" y="98" width="120" height="48" rx="8" fill="#16523f"/>
+  <text x="292" y="120" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">Message</text>
+  <text x="292" y="137" text-anchor="middle" fill="#cfe3da" font-size="12">Create / Update</text>
+  <path d="M352 122 L392 122" stroke="#5b6b66" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="395" y="98" width="110" height="48" rx="8" fill="#f6efe2" stroke="#d9b98a"/>
+  <text x="450" y="120" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2a27">PreValidation</text>
+  <text x="450" y="137" text-anchor="middle" font-size="11" fill="#6b5a3e">outside transaction</text>
+  <path d="M505 122 L540 122" stroke="#5b6b66" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="540" y="60" width="345" height="130" rx="12" fill="none" stroke="#16523f" stroke-dasharray="6 5"/>
+  <text x="712" y="80" text-anchor="middle" font-size="12" fill="#16523f" font-weight="600">ONE DATABASE TRANSACTION</text>
+  <rect x="552" y="98" width="100" height="48" rx="8" fill="#e8913a"/>
+  <text x="602" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">PreOperation</text>
+  <text x="602" y="135" text-anchor="middle" font-size="11" fill="#fff">our plugin</text>
+  <path d="M652 122 L672 122" stroke="#5b6b66" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="674" y="98" width="90" height="48" rx="8" fill="#eef4f1" stroke="#9fb8ad"/>
+  <text x="719" y="120" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2a27">Write</text>
+  <text x="719" y="137" text-anchor="middle" font-size="11" fill="#4d5f58">main operation</text>
+  <path d="M764 122 L780 122" stroke="#5b6b66" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="782" y="98" width="95" height="48" rx="8" fill="#eef4f1" stroke="#9fb8ad"/>
+  <text x="829" y="120" text-anchor="middle" font-size="13" font-weight="600" fill="#1f2a27">PostOperation</text>
+  <text x="829" y="137" text-anchor="middle" font-size="11" fill="#4d5f58">sync steps</text>
+  <path d="M602 146 L602 238" stroke="#b5482f" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="430" y="240" width="345" height="60" rx="8" fill="#fbecea" stroke="#d99a8c"/>
+  <text x="602" y="264" text-anchor="middle" font-size="13" font-weight="600" fill="#7a2a19">Error thrown → whole save rolls back</text>
+  <text x="602" y="284" text-anchor="middle" font-size="12" fill="#7a2a19">"Loan LN-20481: loans of ₹1,00,00,000 or more…"</text>
+  <path d="M829 146 L829 330 L760 330" stroke="#5b6b66" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  <rect x="560" y="312" width="198" height="40" rx="8" fill="#eef4f1" stroke="#9fb8ad"/>
+  <text x="659" y="337" text-anchor="middle" font-size="12" fill="#1f2a27">Commit → async steps run later</text>
+  <text x="20" y="250" font-size="13" fill="#4d5f58">Every path becomes the same message,</text>
+  <text x="20" y="270" font-size="13" fill="#4d5f58">so one plugin protects all of them.</text>
+</svg>

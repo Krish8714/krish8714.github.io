@@ -1,0 +1,13 @@
+---
+import { url } from '../series';
+const { post } = Astro.props;
+const d = post.data;
+---
+<a class="card" href={url(`/posts/${post.id}/`)}>
+  {d.cover && <img src={url(d.cover)} alt="" loading="lazy" width="1600" height="900" />}
+  <div class="body">
+    <p class="meta">Part {d.part}</p>
+    <h3>{d.title}</h3>
+    <p>{d.description}</p>
+  </div>
+</a>

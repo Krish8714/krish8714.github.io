@@ -1,0 +1,18 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { SERIES, url } from '../../series';
+const posts = await getCollection('posts');
+---
+<Base title="Series" description="All article series by Karthik Ithakota.">
+  <div class="page wrap measure">
+    <h1>Series</h1>
+    {SERIES.map(s => (
+      <div class="series-banner">
+        <p class="eyebrow">{posts.filter(p => p.data.series === s.slug).length} of {s.plannedParts} parts</p>
+        <h2><a href={url(`/series/${s.slug}/`)}>{s.title}</a></h2>
+        <p>{s.description}</p>
+      </div>
+    ))}
+  </div>
+</Base>

@@ -1,0 +1,56 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection, render } from 'astro:content';
+import { SERIES, site, url } from '../../series';
+export async function getStaticPaths() {
+  const posts = await getCollection('posts');
+  return posts.map(p => ({ params: { slug: p.id }, props: { post: p } }));
+}
+const { post } = Astro.props;
+const d = post.data;
+const series = SERIES.find(s => s.slug === d.series)!;
+const siblings = (await getCollection('posts')).filter(p => p.data.series === d.series).sort((a, b) => a.data.part - b.data.part);
+const prev = siblings.find(p => p.data.part === d.part - 1);
+const next = siblings.find(p => p.data.part === d.part + 1);
+const { Content, headings } = await render(post);
+const toc = headings.filter(h => h.depth === 2);
+const date = d.pubDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+const words = (post.body || '').split(/\s+/).length;
+const mins = Math.max(1, Math.round(words / 230));
+const ld = {
+  '@context': 'https://schema.org', '@type': 'TechArticle', headline: d.title, description: d.description,
+  datePublished: d.pubDate.toISOString(), author: { '@type': 'Person', name: site.name, url: site.linkedin },
+  image: d.cover ? new URL(url(d.cover), Astro.site).href : undefined,
+  isPartOf: { '@type': 'CreativeWorkSeries', name: series.title }, keywords: d.tags.join(', '),
+};
+---
+<Base title={`${d.title} (${series.title}, Part ${d.part})`} description={d.description} image={d.cover} type="article">
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(ld)} />
+  <article class="wrap measure">
+    <header class="post-header">
+      <p class="crumb"><a href={url(`/series/${series.slug}/`)}>{series.title}</a> · Part {d.part} of {series.plannedParts}</p>
+      <h1>{d.title}</h1>
+      <p class="lede">{d.description}</p>
+      <p class="byline">{site.name} · {date} · {mins} min read</p>
+    </header>
+    {d.cover && <img class="post-cover" src={url(d.cover)} alt="" width="1600" height="900" />}
+    {toc.length > 3 && (
+      <details class="toc"><summary>In this article</summary>
+        <ol>{toc.map(h => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}</ol>
+      </details>
+    )}
+    <div class="prose"><Content /></div>
+    <nav class="pager" aria-label="Series navigation">
+      {prev && <a class="prev" href={url(`/posts/${prev.id}/`)}><small>← Part {prev.data.part}</small>{prev.data.title}</a>}
+      {next && <a class="next" href={url(`/posts/${next.id}/`)}><small>Part {next.data.part} →</small>{next.data.title}</a>}
+    </nav>
+    <aside class="author-box">
+      <div class="avatar">KI</div>
+      <div>
+        <strong>{site.name}</strong>
+        <p>Dynamics 365 &amp; Power Platform Solution Architect (PL-600, PL-400). I write production-grade guides from real CRM projects, and mentor developers preparing for senior roles.</p>
+        <a href={site.linkedin}>Follow on LinkedIn</a> · <a href={url('/mentoring/')}>Book a 1:1 session</a> · <a href={url(`/series/${series.slug}/`)}>All parts of this series</a>
+      </div>
+    </aside>
+  </article>
+</Base>
