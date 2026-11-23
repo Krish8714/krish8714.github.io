@@ -35,7 +35,7 @@ export const SERIES: Series[] = [
     title: 'Dynamics 365 JavaScript, from Basics to Production',
     tagline: 'Build it, break it, debug it, fix it.',
     description: 'Plain JavaScript for model-driven apps, taught the way it breaks in real projects: web resources, the form API, debugging, Web API calls, async, Ribbon Workbench and commands, testing and ALM.',
-    plannedParts: 12,
+    plannedParts: 14,
   },
 ];
 
