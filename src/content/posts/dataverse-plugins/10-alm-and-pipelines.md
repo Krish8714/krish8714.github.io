@@ -88,9 +88,9 @@ A pipeline that has served many teams well, in outline:
 ```csharp
 # Outline (Azure DevOps with Power Platform Build Tools, or GitHub Actions equivalents)
 - Build plugin project and run unit tests
-- pac solution pack  --zipfile out/FinCorp_managed.zip --folder solution/src --packagetype Managed
+- pac solution pack  --zipfile out/LoanHub_managed.zip --folder solution/src --packagetype Managed
 - Publish artefact
-- Stage Test:  pac solution import --path FinCorp_managed.zip --settings-file test.settings.json
+- Stage Test:  pac solution import --path LoanHub_managed.zip --settings-file test.settings.json
 - Run integration tests
 - Stage UAT / Prod (approval gate): import the same artefact with each environment's settings file
 ```

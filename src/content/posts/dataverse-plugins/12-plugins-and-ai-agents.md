@@ -76,7 +76,7 @@ Defences, from simplest:
 
 When Priya asked to "restructure all of Ravi's loans", the agent did the only thing it could see: update tenure fields. That bypasses the schedule regeneration, the audit, and the privilege check we designed in Part 11.
 
-The fix is to offer the agent the right tool: the `fincorp_RestructureLoan` Custom API, with a clear description and typed parameters, exposed to the agent (for example as a tool or action in Copilot Studio). And then protect the fields themselves: a plugin on Update of tenure that blocks direct changes outside the Custom API (using a shared variable set by the API, as in Part 4), with a message saying "Use the RestructureLoan operation to change tenure."
+The fix is to offer the agent the right tool: the `loanhub_RestructureLoan` Custom API, with a clear description and typed parameters, exposed to the agent (for example as a tool or action in Copilot Studio). And then protect the fields themselves: a plugin on Update of tenure that blocks direct changes outside the Custom API (using a shared variable set by the API, as in Part 4), with a message saying "Use the RestructureLoan operation to change tenure."
 
 Now the agent learns the right path from the error, and the business operation is always done properly.
 

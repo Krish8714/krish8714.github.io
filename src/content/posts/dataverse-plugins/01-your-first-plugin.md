@@ -143,7 +143,7 @@ using System;
 using System.Globalization;
 using Microsoft.Xrm.Sdk;
 
-namespace FinCorp.Plugins
+namespace LoanHub.Plugins
 {
     public class ValidateCoApplicant : IPlugin
     {
@@ -250,7 +250,7 @@ Start from the symptom, not the code.
 | "Infinite loop" / depth limit error | Plugin updates the record that triggered it; the platform treats the chain as a loop and stops it ([community.dynamics.com](https://community.dynamics.com/article/KA-25677)) | Trace `depth=`; update only when a value really changed |
 | Works in dev, fails in production | Different registration, image, configuration or role | Compare the solution's steps; replay with the Profiler |
 
-**Tool 1, the plug-in trace log (always first).** In dev: Advanced Settings → Settings → Administration → System Settings → Customization → *Enable logging to plug-in trace log* = **All**. In production keep it on **Exception**. Reproduce, then open Settings → Plug-in Trace Log, filter by `FinCorp.Plugins.ValidateCoApplicant`, and read the Message Block. Our line looks like this:
+**Tool 1, the plug-in trace log (always first).** In dev: Advanced Settings → Settings → Administration → System Settings → Customization → *Enable logging to plug-in trace log* = **All**. In production keep it on **Exception**. Reproduce, then open Settings → Plug-in Trace Log, filter by `LoanHub.Plugins.ValidateCoApplicant`, and read the Message Block. Our line looks like this:
 
 ```text
 Update LN-20481: depth=1, amount=14000000, threshold=10000000, coApplicant=False, image=False

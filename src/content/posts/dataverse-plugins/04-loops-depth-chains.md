@@ -100,7 +100,7 @@ Use a shared variable to leave a note, and check for it in the parent context:
 
 ```csharp
 // In the loan plugin, before updating the customer
-context.SharedVariables["fincorp.exposureSync"] = true;
+context.SharedVariables["loanhub.exposureSync"] = true;
 service.Update(customer);
 
 // In the customer plugin: was I triggered by the loan's exposure sync?
@@ -111,7 +111,7 @@ private static bool CameFrom(IPluginExecutionContext ctx, string key)
     return false;
 }
 
-if (CameFrom(context, "fincorp.exposureSync")) return;   // skip only this specific path
+if (CameFrom(context, "loanhub.exposureSync")) return;   // skip only this specific path
 ```
 
 This is the precise version of the depth check. It skips only the path you know is circular, and keeps running for every other caller, at any depth.

@@ -143,16 +143,16 @@ You could recalculate. Or you can pass a note through `context.SharedVariables`,
 
 ```csharp
 // PreOperation step
-context.SharedVariables["fincorp.oldEmi"] = oldEmi;   // decimal: a simple, serializable type
+context.SharedVariables["loanhub.oldEmi"] = oldEmi;   // decimal: a simple, serializable type
 
 // PostOperation step, same message, same record
-decimal? oldEmi = context.SharedVariables.Contains("fincorp.oldEmi")
-    ? (decimal?)context.SharedVariables["fincorp.oldEmi"] : null;
+decimal? oldEmi = context.SharedVariables.Contains("loanhub.oldEmi")
+    ? (decimal?)context.SharedVariables["loanhub.oldEmi"] : null;
 ```
 
 Rules that keep shared variables from becoming a mystery:
 
-- **Prefix your keys** (`fincorp.`) so they don't collide with another team's plugin or an ISV solution.
+- **Prefix your keys** (`loanhub.`) so they don't collide with another team's plugin or an ISV solution.
 - **Use simple types** (strings, numbers, Guids, booleans). Values are serialized, especially when an async step receives them.
 - **Always check Contains.** The PreOperation step might be disabled, filtered out, or not deployed in that environment.
 - **If the note was set by a plugin in a parent pipeline** (the operation that caused this one), look in `context.ParentContext.SharedVariables`. We'll use this in Part 4 to stop loops cleanly.

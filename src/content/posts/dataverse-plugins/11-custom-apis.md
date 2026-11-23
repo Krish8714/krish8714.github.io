@@ -22,7 +22,7 @@ Custom APIs fix that by letting you add your own message to Dataverse.
 
 The restructuring requirement: given a loan, a new tenure and a reason, the system must recalculate the EMI, regenerate the remaining repayment schedule, close the old schedule rows, write an audit record, and return the new EMI. It must be callable from the loan form (a button), from Power Automate (an approval flow), and from the core banking integration. Only users with a specific restructuring privilege may run it.
 
-That's not an Update. That's an operation. So we'll make it one: `fincorp_RestructureLoan`.
+That's not an Update. That's an operation. So we'll make it one: `loanhub_RestructureLoan`.
 
 ## The thought shift
 
@@ -83,8 +83,8 @@ Everything from the earlier parts still applies: it's synchronous and transactio
 
 ## Calling it
 
-- **Web API:** a bound action appears as `POST /api/data/v9.2/new_loans(<id>)/Microsoft.Dynamics.CRM.fincorp_RestructureLoan` with a JSON body of parameters.
-- **SDK:** an `OrganizationRequest("fincorp_RestructureLoan")` with the parameters.
+- **Web API:** a bound action appears as `POST /api/data/v9.2/new_loans(<id>)/Microsoft.Dynamics.CRM.loanhub_RestructureLoan` with a JSON body of parameters.
+- **SDK:** an `OrganizationRequest("loanhub_RestructureLoan")` with the parameters.
 - **Power Automate:** the Dataverse connector's bound/unbound action steps list your Custom API.
 - **Model-driven app button:** a command (Power Fx or JavaScript) that calls it for the selected loan.
 
