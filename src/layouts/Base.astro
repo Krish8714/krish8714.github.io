@@ -5,7 +5,7 @@ interface Props { title?: string; description?: string; image?: string; type?: s
 const { title, description = site.description, image, type = 'website' } = Astro.props;
 const fullTitle = title ? `${title} · ${site.name}` : site.title;
 const canonical = new URL(Astro.url.pathname, Astro.site);
-const ogImage = image ? new URL(url(image), Astro.site).href : undefined;
+const ogImage = new URL(url(image ?? '/og-default.png'), Astro.site).href;
 const path = Astro.url.pathname;
 const is = (p: string) => path.startsWith(url(p)) ? 'page' : undefined;
 ---
@@ -23,7 +23,8 @@ const is = (p: string) => path.startsWith(url(p)) ? 'page' : undefined;
   <meta property="og:title" content={fullTitle} />
   <meta property="og:description" content={description} />
   <meta property="og:url" content={canonical} />
-  {ogImage && <meta property="og:image" content={ogImage} />}
+  <meta property="og:image" content={ogImage} />
+  <meta property="og:site_name" content={site.name} />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="author" content={site.name} />
   <slot name="head" />
