@@ -1,0 +1,451 @@
+<!doctype html><html><head><meta name="robots" content="noindex"><meta charset="utf-8"><title>Dataverse Explained: From One Excel File to a Real Data Model</title></head><body><h1>Dataverse Explained: From One Excel File to a Real Data Model</h1>
+<p><em>Part 1 of my Dynamics 365 Real-World Series. One lending bank,
+built end to end, the way real projects need it. Today: the data model,
+the layer every other part stands on.</em></p>
+<blockquote>
+<p><strong>Model the business, not the spreadsheet.</strong></p>
+</blockquote>
+<h3 id="the-scenario-12-people-one-excel-file-3000-loans">The scenario:
+12 people, one Excel file, 3,000 loans</h3>
+<p>A mid-sized lending bank runs its loan pipeline from one shared Excel
+file. Twelve people edit it. It has 3,000 rows and 46 columns.</p>
+<p>Here's what that looks like on a normal Tuesday:</p>
+<ol type="1">
+<li>The same customer appears on five rows, spelled "Ravi Kumar", "Ravi
+Kumar K" and "R. Kumar".</li>
+<li>The Branch column holds "Hyderabad", "Hyd", "HYD " and "Hyderabad -
+Madhapur".</li>
+<li>The Amount column holds <code>1500000</code>,
+<code>15,00,000</code>, <code>15 lakh</code> and, once,
+<code>TBD</code>.</li>
+<li>Co-applicant details are squeezed into one cell: name, phone and
+PAN, separated by commas.</li>
+<li>Nobody knows who changed the interest rate on row 1,842, or
+when.</li>
+<li>Two people edited the file at the same time and one of them lost an
+hour of work.</li>
+</ol>
+<p>The bank decides to move to Dynamics 365. The first instinct of most
+teams is to create a table called "Loan" with 46 columns, one per Excel
+heading, and import the file.</p>
+<p>That's the mistake this article is about. <strong>A spreadsheet
+stores rows of text. A data model stores things the business cares
+about, and the relationships between them.</strong> Get this layer wrong
+and every later part of the system (security, logic, apps, reporting,
+integration, migration) inherits the problem.</p>
+<h3 id="the-thought-shift">The thought shift</h3>
+<p>Before you open the maker portal, read the spreadsheet and ask three
+questions about every column:</p>
+<ul>
+<li><strong>Is this a thing, or a fact about a thing?</strong>
+"Customer" is a thing. "Customer phone" is a fact about that thing.
+Things become tables; facts become columns.</li>
+<li><strong>Can there be more than one?</strong> One loan can have
+several documents and several guarantors. Anything that repeats becomes
+its own table, never "Document 1, Document 2, Document 3" columns.</li>
+<li><strong>Who else uses this value?</strong> "Branch" is used by
+loans, users, teams and reports. A value shared by many records becomes
+a table you look up, not text you type.</li>
+</ul>
+<p>Apply those three questions to our 46 columns and the single Excel
+sheet turns into six tables:</p>
+<ul><li><strong>Contact (customer)</strong> — Type: Standard; Why it's a table: People already exist in Dataverse. Reuse them, don't rebuild
+them</li><li><strong>Loan Application</strong> — Type: Custom; Why it's a table: The core business record</li><li><strong>Loan Document</strong> — Type: Custom; Why it's a table: One loan has many documents, each with its own status</li><li><strong>Branch</strong> — Type: Custom; Why it's a table: Shared by loans, users and reports; stops "Hyd" vs "Hyderabad"</li><li><strong>Loan Product</strong> — Type: Custom; Why it's a table: Rate, tenure limits and rules change by product, not by loan</li><li><strong>Loan Guarantor</strong> — Type: Custom (link table); Why it's a table: A guarantor can back many loans, and each link has its own
+share</li></ul>
+<h3 id="the-concepts-in-simple-words">The concepts in simple words</h3>
+<p>Think of Dataverse as <strong>Excel done properly</strong>.</p>
+<ul><li><strong>A sheet</strong> — Dataverse: A <strong>table</strong>; What Dataverse adds: Security, auditing, business logic, an API, and relationships to
+other tables</li><li><strong>A column heading</strong> — Dataverse: A <strong>column</strong>; What Dataverse adds: A fixed data type, so nobody types "ten lakh" into an amount</li><li><strong>A row</strong> — Dataverse: A <strong>row</strong> (record); What Dataverse adds: A unique ID (GUID) that never changes, plus created/modified by and
+on</li><li><strong>VLOOKUP to another sheet</strong> — Dataverse: A <strong>lookup</strong> (relationship); What Dataverse adds: Real referential integrity and cascading behaviour</li><li><strong>"Don't duplicate this ID" (hope)</strong> — Dataverse: An <strong>alternate key</strong>; What Dataverse adds: Guaranteed uniqueness, and upserts by business ID</li></ul>
+<h4 id="table-types">Table types</h4>
+<ul>
+<li><strong>Standard tables</strong> come with Dataverse or Dynamics
+365: Contact, Account, User, Team. Reuse them where the meaning
+matches.</li>
+<li><strong>Custom tables</strong> are yours: Loan Application,
+Branch.</li>
+<li><strong>Activity tables</strong> behave like tasks, emails and phone
+calls: they appear in the timeline. Use one for things like "Customer
+call note".</li>
+<li><strong>Virtual tables</strong> show data that lives in another
+system without copying it.</li>
+</ul>
+<h4 id="ownership-a-choice-you-cant-undo">Ownership: a choice you can't
+undo</h4>
+<p>When you create a table you choose <strong>User or team</strong>
+ownership, or <strong>Organization</strong> ownership.</p>
+<ul>
+<li><strong>User or team owned:</strong> each row has an owner, and
+security roles can say "own records", "my business unit" and so on.
+Loans need this, because a loan officer should see her loans and a
+branch manager his branch.</li>
+<li><strong>Organization owned:</strong> every row belongs to the whole
+organization. Fine for reference data like Loan Product or Branch.</li>
+</ul>
+<p>You can't switch ownership type after the table is created. Decide it
+on day one, with Part 2 (security) in mind.</p>
+<h4 id="relationships-and-cascade-behaviour">Relationships and cascade
+behaviour</h4>
+<ul>
+<li><strong>1:N (one-to-many):</strong> one customer, many loans. The
+"many" side gets a lookup column.</li>
+<li><strong>N:N (many-to-many):</strong> many guarantors, many loans.
+Dataverse can create a hidden link table for you (native N:N), or you
+can build your own link table (manual N:N) when the link needs its own
+columns, such as "guarantee share %".</li>
+<li><strong>Cascade behaviour</strong> decides what happens to child
+rows when the parent is deleted, assigned, shared or reparented. Getting
+it wrong is the fastest way to lose data. We'll set it deliberately in
+Implementation 3.</li>
+</ul>
+<h3 id="implementation-1-a-solution-and-the-loan-application-table-the-right-way">Implementation
+1: a solution and the Loan Application table, the right way</h3>
+<p><strong>Steps:</strong></p>
+<ol type="1">
+<li>In Power Apps, open <strong>Solutions</strong> and create a
+<strong>publisher</strong> with your organization's prefix. In this
+series the examples use <code>new_</code> so they're easy to read; in a
+real project, use your own prefix (for example <code>lh_</code>) so
+every column name tells you who owns it.</li>
+<li>Create a solution called <strong>Lending Core</strong> using that
+publisher. Every table, column and relationship goes in this solution
+from the start. Never build in the Default solution.</li>
+<li>In the solution, select <strong>New &gt; Table</strong>, name it
+<strong>Loan Application</strong> (plural: Loan Applications).</li>
+<li>Under <strong>Advanced options</strong>:
+<ul>
+<li>Ownership: <strong>User or team</strong>.</li>
+<li>Enable <strong>notes and attachments</strong>, so officers can
+attach small files to the record.</li>
+<li>Enable <strong>activities</strong>, so calls and emails appear on
+the loan's timeline.</li>
+<li>Enable <strong>auditing</strong> at table level (organization
+auditing must also be on).</li>
+</ul></li>
+<li>Primary column: <strong>Loan Number</strong>. This is what users see
+in lookups and views, so make it meaningful (we'll make it an autonumber
+in Implementation 4).</li>
+<li>Save.</li>
+</ol>
+<p><strong>Why a solution from minute one:</strong> everything you build
+here has to travel to test and production later. Components created
+outside a solution are hard to find, easy to forget, and are the reason
+"it works in dev" so often fails in test.</p>
+<h3 id="implementation-2-the-right-column-types">Implementation 2: the
+right column types</h3>
+<p>This is where most data quality is won or lost. Every column type is
+a promise about what the data can contain.</p>
+<ul><li><strong>Amount</strong> — Dataverse column: Loan Amount; Type: <strong>Currency</strong>; Why this type: Stores the value plus a base-currency copy; reports can total it
+safely</li><li><strong>Tenure</strong> — Dataverse column: Tenure (months); Type: <strong>Whole number</strong>, min 6, max 360; Why this type: The type rejects "2 years"; min/max reject nonsense</li><li><strong>Interest rate</strong> — Dataverse column: Interest Rate; Type: <strong>Decimal</strong>, 2 places; Why this type: Precision matters for EMI</li><li><strong>Purpose</strong> — Dataverse column: Purpose; Type: <strong>Choice</strong> (Home, Vehicle, Personal, Business); Why this type: Four values only, so filters and reports work</li><li><strong>Status</strong> — Dataverse column: Loan Status; Type: <strong>Choice</strong> (Draft, Verified, Pending Approval,
+Approved, Rejected, Disbursed); Why this type: Drives views, BPF and commands later</li><li><strong>Application date</strong> — Dataverse column: Application Date; Type: <strong>Date only</strong>; Why this type: A date, not a moment in time (see Day 2)</li><li><strong>PAN verified</strong> — Dataverse column: PAN Verified; Type: <strong>Yes/No</strong>; Why this type: Two states, nothing else</li><li><strong>Branch</strong> — Dataverse column: Branch; Type: <strong>Lookup</strong> to Branch; Why this type: Shared value: a table, not text</li><li><strong>Customer</strong> — Dataverse column: Applicant; Type: <strong>Lookup</strong> to Contact; Why this type: The person, not their name typed again</li></ul>
+<p><strong>Steps:</strong></p>
+<ol type="1">
+<li>Open the Loan Application table, select <strong>New &gt;
+Column</strong> for each row above.</li>
+<li>For choices that several tables share (for example "Yes/No/Not
+applicable" or "Region"), create a <strong>global choice</strong> in the
+solution and reuse it. A local choice belongs to one column only.</li>
+<li>Set <strong>Required</strong> only where the business truly can't
+proceed without the value. Required on the column applies to every form,
+so be careful: imports that don't supply it will fail.</li>
+<li>Fill in the <strong>Description</strong> of every column. It shows
+as a tooltip, it documents the model, and (as we'll see in the AI
+section) Copilot reads it.</li>
+</ol>
+<h3 id="implementation-3-relationships-with-deliberate-cascade-behaviour">Implementation
+3: relationships with deliberate cascade behaviour</h3>
+<ul><li><strong>Contact → Loan Application</strong> — Type: 1:N; Delete behaviour: <strong>Restrict delete</strong> (Referential, Restrict Delete); Assign behaviour: None; Why: Deleting a customer must never delete their loans</li><li><strong>Loan Application → Loan Document</strong> — Type: 1:N; Delete behaviour: <strong>Parental</strong> (cascade all); Assign behaviour: Cascade all; Why: Documents only make sense with their loan, and follow its owner</li><li><strong>Branch → Loan Application</strong> — Type: 1:N; Delete behaviour: <strong>Restrict delete</strong>; Assign behaviour: None; Why: You can't close a branch that still has loans</li><li><strong>Loan Product → Loan Application</strong> — Type: 1:N; Delete behaviour: <strong>Restrict delete</strong>; Assign behaviour: None; Why: Same reason</li><li><strong>Loan Application ↔︎ Contact (as guarantor)</strong> — Type: Manual N:N via <strong>Loan Guarantor</strong>; Delete behaviour: Parental from loan; Assign behaviour: None; Why: The link has its own columns: guarantee share %, signed on</li></ul>
+<p><strong>Steps:</strong></p>
+<ol type="1">
+<li>On the Loan Application table, open <strong>Relationships &gt; New
+relationship &gt; Many-to-one</strong>, pick Contact, name the lookup
+<strong>Applicant</strong>.</li>
+<li>Open <strong>Advanced options</strong> and set
+<strong>Delete</strong> to <strong>Restrict</strong>. This stops the
+delete with an error while any loan still points at the contact.</li>
+<li>Create the Loan Document table with a many-to-one relationship to
+Loan Application, and set the relationship to
+<strong>Parental</strong>.</li>
+<li>For guarantors, create a <strong>Loan Guarantor</strong> table with
+two lookups (Loan Application and Contact) and the extra columns. A
+native N:N is simpler, but it can't hold "guarantee share %".</li>
+</ol>
+<p><strong>Why this matters:</strong> cascade settings are invisible
+until the day someone deletes or reassigns a record. Part 2 shows
+exactly what goes wrong when they're left on defaults.</p>
+<h3 id="implementation-4-readable-loan-numbers-and-an-alternate-key">Implementation
+4: readable loan numbers and an alternate key</h3>
+<p>Two different needs, often confused:</p>
+<ul>
+<li><strong>A number humans read:</strong> <code>LN-004821</code>. Use
+an <strong>autonumber</strong> column.</li>
+<li><strong>A key systems match on:</strong> the legacy system's loan
+ID, so a migration or integration can say "update the loan whose legacy
+ID is 88213" without knowing the Dataverse GUID. Use an
+<strong>alternate key</strong>.</li>
+</ul>
+<p><strong>Steps:</strong></p>
+<ol type="1">
+<li>Change the primary column <strong>Loan Number</strong> to the
+<strong>Autonumber</strong> data type with a format such as
+<code>LN-{SEQNUM:6}</code>. Dataverse assigns the next number on create;
+nobody types it.</li>
+<li>Add a text column <strong>Legacy Loan ID</strong>.</li>
+<li>Open <strong>Keys &gt; New key</strong>, name it <strong>Legacy Loan
+ID key</strong>, and select the Legacy Loan ID column.</li>
+<li>Wait for the key's status to become <strong>Active</strong>.
+Dataverse builds a unique index in the background; on a table that
+already has data this can take time, and it <strong>fails if duplicates
+already exist</strong> (see Day 2).</li>
+</ol>
+<p>With the key in place, the data migration series uses
+<strong>upsert</strong>: send the row with its legacy ID, and Dataverse
+creates it if it's new or updates it if it exists. Re-running a load
+never creates duplicates.</p>
+<h3 id="implementation-5-let-the-system-do-the-maths">Implementation 5:
+let the system do the maths</h3>
+<p>Three ways to have Dataverse calculate a value instead of a
+person:</p>
+<ul><li><strong><strong>Formula column</strong> (Power Fx)</strong> — Runs when: When the row is read; Good for: Values from the same row and related rows, like EMI; Watch out for: Read-only; can't be used as a filter in every situation, check the
+limits for your case</li><li><strong><strong>Calculated column</strong> (classic)</strong> — Runs when: When the row is read; Good for: Older designs; the same idea with a designer instead of Power
+Fx; Watch out for: For new work, prefer formula columns</li><li><strong><strong>Rollup column</strong></strong> — Runs when: On a schedule (a system job), or on demand; Good for: Totals across child rows: "total disbursed to this customer"; Watch out for: <strong>Not real-time</strong>: it can be hours old, so never base a
+validation on it</li></ul>
+<p><strong>Example: EMI as a formula column</strong></p>
+<pre class="text"><code>With(
+    { r: 'Interest Rate' / 1200, n: 'Tenure (months)' },
+    If(r = 0,
+       'Loan Amount' / n,
+       'Loan Amount' * r * Power(1 + r, n) / (Power(1 + r, n) - 1))
+)</code></pre>
+<p><strong>Example: rollup on Contact</strong></p>
+<ul>
+<li>Column <strong>Total Active Loan Amount</strong> on Contact = SUM of
+Loan Amount on related Loan Applications where Status = Disbursed.</li>
+</ul>
+<p><strong>Rule:</strong> if a value can be calculated, calculate it. A
+typed value is wrong the moment one of its inputs changes.</p>
+<h3 id="day-2-what-actually-goes-wrong-in-production">Day 2: what
+actually goes wrong in production</h3>
+<p>These are the data-model problems that come up again and again on
+real projects. For each one: what you see, why it happens, and how to
+handle it.</p>
+<h4 id="1-hyd-hyd--and-hyderabad-in-the-same-column">1. "Hyd", "HYD "
+and "Hyderabad" in the same column</h4>
+<p><strong>What you see:</strong> the branch report shows 40 branches.
+The bank has 25.</p>
+<p><strong>Why it happens:</strong> Branch was created as a text column
+"just for now", or imported as text from Excel.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Create the <strong>Branch</strong> table and a
+<strong>Branch</strong> lookup on Loan Application.</li>
+<li>Build a mapping list (old text → correct branch) and fix it in
+staging, not in Dataverse.</li>
+<li>Load the lookup values, check counts per branch, then remove the
+text column from forms and views.</li>
+<li>Make the lookup required on the form so it can't happen again.</li>
+</ol>
+<h4 id="2-can-we-just-change-this-column-from-text-to-choice">2. "Can we
+just change this column from text to choice?"</h4>
+<p><strong>What you see:</strong> the maker portal doesn't offer the
+type you want.</p>
+<p><strong>Why it happens:</strong> most column type changes aren't
+allowed once a column exists, because the stored data and the database
+type would no longer match.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Create a <strong>new column</strong> with the right type.</li>
+<li>Copy and convert the data (a flow, a script or your migration
+tool).</li>
+<li>Update forms, views, business rules, flows and code to use the new
+column.</li>
+<li>Remove the old column only after nothing depends on it (check
+<strong>Show dependencies</strong>).</li>
+</ol>
+<p>Prevention: decide types in a data-model review before anyone
+builds.</p>
+<h4 id="3-dates-that-move-by-a-day">3. Dates that move by a day</h4>
+<p><strong>What you see:</strong> an officer in Dubai opens a loan with
+Application Date 15 March, and sees 14 March.</p>
+<p><strong>Why it happens:</strong> a Date and Time column with
+<strong>User local</strong> behaviour stores a moment in UTC and shows
+it in each user's time zone. A pure date stored as midnight in India is
+the previous evening in Dubai.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Use <strong>Date only</strong> behaviour for dates that aren't
+moments: date of birth, application date, EMI due date.</li>
+<li>You can change behaviour from User local to Date only on an existing
+column, but it's a <strong>one-way change</strong>. Plan it, and check
+how existing values will be read.</li>
+<li>Keep <strong>User local</strong> for real moments: "call scheduled
+at 3:30 PM".</li>
+</ol>
+<h4 id="4-the-alternate-key-never-becomes-active">4. The alternate key
+never becomes Active</h4>
+<p><strong>What you see:</strong> the key's status is
+<strong>Failed</strong>, and the integration's upserts fail.</p>
+<p><strong>Why it happens:</strong> the data already contains duplicate
+values in the key column, so the unique index can't be created.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Export the rows and find the duplicates (an Advanced Find view
+grouped by the column, or a SQL query over the staging data).</li>
+<li>Fix them at the source, or decide which row wins and clean up.</li>
+<li><strong>Reactivate</strong> the key and watch its status.</li>
+</ol>
+<h4 id="5-the-total-on-the-customer-is-wrong">5. "The total on the
+customer is wrong"</h4>
+<p><strong>What you see:</strong> a loan was disbursed this morning, but
+the customer's Total Active Loan Amount hasn't changed.</p>
+<p><strong>Why it happens:</strong> rollup columns are recalculated by a
+background job on a schedule, not on every save.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>For display, accept the delay and show "Last updated" next to the
+value.</li>
+<li>If someone needs it now, they can recalculate the rollup from the
+form.</li>
+<li>If a business rule depends on the total ("no customer may exceed ₹2
+crore"), calculate it in a <strong>plugin</strong> at the moment of save
+(Part 3B), not from a rollup.</li>
+</ol>
+<h4 id="6-choice-values-that-dont-match-between-environments">6. Choice
+values that don't match between environments</h4>
+<p><strong>What you see:</strong> an integration maps "Approved" to
+<code>100000004</code> in test, but in production that number means
+"Rejected".</p>
+<p><strong>Why it happens:</strong> someone created the choice by hand
+in each environment, so the values were numbered in a different
+order.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Create choices <strong>once</strong>, in the development
+environment, inside the solution.</li>
+<li>Move them to test and production only by importing the
+solution.</li>
+<li>In code, keep the numeric values in one constant file, and check
+them after every deployment.</li>
+</ol>
+<h4 id="7-a-deleted-customer-took-12-loans-with-them">7. A deleted
+customer took 12 loans with them</h4>
+<p><strong>What you see:</strong> a duplicate contact was deleted to
+clean up, and 12 loan applications disappeared.</p>
+<p><strong>Why it happens:</strong> the Contact → Loan relationship was
+left as <strong>Parental</strong>, which cascades delete to every
+child.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Restore from backup if needed (environment backups restore the whole
+environment, so plan carefully).</li>
+<li>Change the relationship to <strong>Restrict delete</strong>, as in
+Implementation 3.</li>
+<li>For duplicates, <strong>merge</strong> contacts instead of deleting
+them, so child records move to the surviving contact.</li>
+</ol>
+<h3 id="using-ai-with-the-data-model">Using AI with the data model</h3>
+<h4 id="ai-inside-the-maker-experience">AI inside the maker
+experience</h4>
+<ul>
+<li><strong>Create tables with Copilot:</strong> in Power Apps you can
+describe what you need ("a table to track loan applications with amount,
+tenure, status and customer") and Copilot proposes tables and columns.
+It's a fast first draft. Then apply the three questions from the thought
+shift: it will happily give you a text column where you need a
+lookup.</li>
+<li><strong>Formula columns with Copilot:</strong> describe the
+calculation in plain words and let Copilot suggest the Power Fx. Always
+test it with edge cases: zero interest, one-month tenure, empty
+values.</li>
+<li><strong>Descriptions feed Copilot:</strong> the column descriptions
+you wrote in Implementation 2 help Copilot answer users' questions about
+the data later. Good descriptions are no longer just documentation.</li>
+</ul>
+<h4 id="ai-beside-you-for-design">AI beside you, for design</h4>
+<p>Prompts that work (copy and adapt):</p>
+<pre class="text"><code>Here are the 46 column headings from our loan tracking spreadsheet,
+with 5 sample rows. Propose a Dataverse data model: tables, column
+types, which values should be lookups or choices, relationships with
+cascade behaviour, and alternate keys. Flag every column you think
+holds more than one fact.</code></pre>
+<pre class="text"><code>Review this Dataverse data model for a lending bank. List: columns
+whose type will be hard to change later, relationships whose delete
+behaviour could lose data, values that should be calculated instead
+of typed, and anything that will make migration or reporting harder.</code></pre>
+<h4 id="where-ai-goes-wrong-here">Where AI goes wrong here</h4>
+<ul>
+<li>It mirrors the spreadsheet: one wide table with 40 columns.</li>
+<li>It suggests <strong>Parental</strong> relationships everywhere,
+because "child records should follow the parent" sounds sensible until a
+customer is deleted.</li>
+<li>It doesn't know your publisher prefix, your existing standard tables
+or your security needs. Use its output as a draft for a design review,
+not as the design.</li>
+</ul>
+<p><strong>Never paste real customer data</strong> into an AI tool to
+"get better suggestions". Column headings and fake sample rows are
+enough.</p>
+<h3 id="debugging-and-review-checklist">Debugging and review
+checklist</h3>
+<p>Before anyone builds forms or logic on top of the model:</p>
+<ul class="task-list">
+<li><label><input type="checkbox"/>Every table is in a solution with
+your publisher prefix</label></li>
+<li><label><input type="checkbox"/>Ownership type chosen deliberately
+for each table (user/team vs organization)</label></li>
+<li><label><input type="checkbox"/>No column holds more than one
+fact</label></li>
+<li><label><input type="checkbox"/>Shared values are lookups to their
+own table, not text</label></li>
+<li><label><input type="checkbox"/>Choice values created once, in dev,
+in the solution</label></li>
+<li><label><input type="checkbox"/>Date columns: Date only for dates,
+User local for moments</label></li>
+<li><label><input type="checkbox"/>Every relationship's delete and
+assign behaviour chosen on purpose</label></li>
+<li><label><input type="checkbox"/>Alternate keys created and
+<strong>Active</strong> for every external ID</label></li>
+<li><label><input type="checkbox"/>Calculated values are formula,
+calculated or rollup columns, not typed</label></li>
+<li><label><input type="checkbox"/>No validation relies on a rollup
+column</label></li>
+<li><label><input type="checkbox"/>Every column has a
+description</label></li>
+</ul>
+<h3 id="interview-questions-with-the-answers-that-land">Interview
+questions, with the answers that land</h3>
+<p><strong>1. When would you use 1:N versus N:N? Give a lending
+example.</strong></p>
+<p>1:N when one record owns many: one customer, many loan applications.
+N:N when both sides can have many: a guarantor can back many loans, and
+a loan can have several guarantors. If the link itself needs data, such
+as the guarantee share, I build a manual link table instead of a native
+N:N.</p>
+<p><strong>2. What's the difference between an alternate key and an
+autonumber column?</strong></p>
+<p>An autonumber is a readable value Dataverse generates for people,
+like LN-004821. An alternate key is a uniqueness guarantee on one or
+more columns that systems use to find a row without its GUID, which
+makes upserts and integrations idempotent.</p>
+<p><strong>3. A customer was deleted and their loans disappeared. What
+happened, and how do you prevent it?</strong></p>
+<p>The relationship was Parental, so delete cascaded to the loans. I'd
+set Contact → Loan to Restrict delete, and use merge instead of delete
+to clean up duplicates.</p>
+<p><strong>4. Why can't a validation rule rely on a rollup
+column?</strong></p>
+<p>Rollups are recalculated by a background job, so the value can be
+hours old. A validation at save time needs the current value, so I'd
+calculate it in a plugin inside the transaction.</p>
+<p><strong>5. A date shows a day earlier for users in another country.
+Why?</strong></p>
+<p>The column uses User local behaviour, which stores a moment in UTC
+and converts it to each user's time zone. For pure dates I use Date only
+behaviour.</p>
+<h3 id="rule-of-thumb">Rule of thumb</h3>
+<p><strong>Things become tables, facts become columns, shared values
+become lookups, and anything that can be calculated is never
+typed.</strong></p>
+<p><strong>Next in the series:</strong> why a branch manager sees only
+her branch. Dynamics 365 security, explained with real scenarios.</p>
+<hr/><p><em>Originally published on my blog, with the full series: <a href="https://krish8714.github.io">krish8714.github.io</a></em></p></body></html>
