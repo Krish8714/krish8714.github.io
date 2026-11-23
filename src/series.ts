@@ -1,4 +1,4 @@
-export interface Series { slug: string; title: string; tagline: string; description: string; plannedParts: number; }
+export interface Series { slug: string; title: string; tagline: string; description: string; plannedParts: number; introOffset?: number; }
 
 export const SERIES: Series[] = [
   {
@@ -7,6 +7,28 @@ export const SERIES: Series[] = [
     tagline: 'A plugin is a contract on the data, not a feature on a screen.',
     description: 'Twelve parts that take one real plugin from the demo to production: stages, Target and images, loops, external calls, performance, testing, observability, security, ALM, Custom APIs and AI agents.',
     plannedParts: 12,
+  },
+  {
+    slug: 'azure-functions-dynamics-365',
+    title: 'Azure Functions with Dynamics 365',
+    tagline: 'Dataverse publishes, Azure delivers.',
+    description: 'Integrating Dataverse with Azure the production way: webhooks and Service Bus, high-volume loads, Durable Functions, retries and dead-letter queues, and security.',
+    plannedParts: 6,
+  },
+  {
+    slug: 'dynamics-365-real-world',
+    title: 'Dynamics 365 Real-World Series',
+    tagline: 'One lending bank, built end to end, the way real projects need it.',
+    description: 'A lending bank built in Dynamics 365 step by step: the data model, security, where logic should live, how to think like an architect, and model-driven apps with business process flows.',
+    plannedParts: 6,
+  },
+  {
+    slug: 'crm-data-migration',
+    title: 'CRM Data Migration: From Legacy to Dataverse',
+    tagline: 'Never load straight from source into CRM.',
+    description: 'A real migration from first meeting to go-live weekend, using SQL Server, SSIS, KingswaySoft and Azure Data Factory.',
+    plannedParts: 9,
+    introOffset: 1,
   },
 ];
 

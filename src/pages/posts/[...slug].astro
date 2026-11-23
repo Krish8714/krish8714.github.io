@@ -10,8 +10,10 @@ const { post } = Astro.props;
 const d = post.data;
 const series = SERIES.find(s => s.slug === d.series)!;
 const siblings = (await getCollection('posts')).filter(p => p.data.series === d.series).sort((a, b) => a.data.part - b.data.part);
-const prev = siblings.find(p => p.data.part === d.part - 1);
-const next = siblings.find(p => p.data.part === d.part + 1);
+const idx = siblings.findIndex(p => p.id === post.id);
+const prev = idx > 0 ? siblings[idx - 1] : undefined;
+const next = idx < siblings.length - 1 ? siblings[idx + 1] : undefined;
+const lab = (x: any) => x.data.label ?? `Part ${x.data.part}`;
 const { Content, headings } = await render(post);
 const toc = headings.filter(h => h.depth === 2);
 const date = d.pubDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -24,11 +26,11 @@ const ld = {
   isPartOf: { '@type': 'CreativeWorkSeries', name: series.title }, keywords: d.tags.join(', '),
 };
 ---
-<Base title={`${d.title} (${series.title}, Part ${d.part})`} description={d.description} image={d.cover} type="article">
+<Base title={`${d.title} (${series.title}, ${lab(post)})`} description={d.description} image={d.cover} type="article">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(ld)} />
   <article class="wrap measure">
     <header class="post-header">
-      <p class="crumb"><a href={url(`/series/${series.slug}/`)}>{series.title}</a> · Part {d.part} of {series.plannedParts}</p>
+      <p class="crumb"><a href={url(`/series/${series.slug}/`)}>{series.title}</a> · {lab(post)}</p>
       <h1>{d.title}</h1>
       <p class="lede">{d.description}</p>
       <p class="byline">{site.name} · {date} · {mins} min read</p>
@@ -41,8 +43,8 @@ const ld = {
     )}
     <div class="prose"><Content /></div>
     <nav class="pager" aria-label="Series navigation">
-      {prev && <a class="prev" href={url(`/posts/${prev.id}/`)}><small>← Part {prev.data.part}</small>{prev.data.title}</a>}
-      {next && <a class="next" href={url(`/posts/${next.id}/`)}><small>Part {next.data.part} →</small>{next.data.title}</a>}
+      {prev && <a class="prev" href={url(`/posts/${prev.id}/`)}><small>← {lab(prev)}</small>{prev.data.title}</a>}
+      {next && <a class="next" href={url(`/posts/${next.id}/`)}><small>{lab(next)} →</small>{next.data.title}</a>}
     </nav>
     <aside class="author-box">
       <div class="avatar">KI</div>

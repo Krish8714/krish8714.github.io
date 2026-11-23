@@ -17,8 +17,8 @@ const byPart = new Map(posts.map(p => [p.data.part, p]));
       {Array.from({ length: s.plannedParts }, (_, i) => i + 1).map(n => {
         const p = byPart.get(n);
         return <li>{p
-          ? <a href={url(`/posts/${p.id}/`)}><span class="num">Part {n}</span><span>{p.data.title}</span></a>
-          : <span class="soon"><span class="num">Part {n}</span><span>Coming soon</span></span>}</li>;
+          ? <a href={url(`/posts/${p.id}/`)}><span class="num">{p.data.label ?? `Part ${n}`}</span><span>{p.data.title}</span></a>
+          : <span class="soon"><span class="num">Part {n - (s.introOffset ?? 0)}</span><span>Coming soon</span></span>}</li>;
       })}
     </ol>
   </div>
