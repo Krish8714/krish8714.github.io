@@ -37,6 +37,14 @@ export const SERIES: Series[] = [
     description: 'Plain JavaScript for model-driven apps, taught the way it breaks in real projects: web resources, the form API, debugging, Web API calls, async, Ribbon Workbench and commands, testing and ALM.',
     plannedParts: 14,
   },
+  {
+    slug: 'dynamics-365-interview-prep',
+    title: 'Dynamics 365 Interview Prep: From Basics to Architect',
+    tagline: 'Answer the question, then answer the next three.',
+    description: 'Five levels of real interview questions for Dynamics 365 and Power Platform roles: fundamentals, developer, senior, the project round, and the extremely hard scenarios that decide architect offers.',
+    plannedParts: 14,
+    introOffset: 1,
+  },
 ];
 
 export const site = {
