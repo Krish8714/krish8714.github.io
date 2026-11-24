@@ -162,7 +162,7 @@ Now we break the working script on purpose, six ways. Each one is a real failure
 
 | # | What you broke | What you see | Link in the chain |
 | --- | --- | --- | --- |
-| 1 | Typo in the function name | A Script Error dialog: method does not exist | 3. The handler |
+| 1 | Typo in the function name | Script Error; Show Details says "Web resource method does not exist" | 3. The handler |
 | 2 | Forgot "Pass execution context" | Script Error: cannot read properties of undefined | 3. The handler |
 | 3 | Library on a different form | Nothing at all | 2. The library |
 | 4 | Old version still cached | Your fix "doesn't work" | 4. The browser |
@@ -173,11 +173,15 @@ Now we break the working script on purpose, six ways. Each one is a real failure
 
 **Break it:** in the event handler, type `LoanHub.LoanApplicaton.onLoad` (missing an "i").
 
-**What you see:** when the form opens, a **Script Error** dialog says the web resource method does not exist, and names the function exactly as you typed it.
+**What you see:** when the form opens, a **Script Error** dialog says only *"One of the scripts for this record has caused an error."* The real message is hidden: select **Show Details** and you'll see something like:
+
+> Web resource method does not exist: LoanHub.LoanApplicaton.onLoad. However the closest object we found is LoanHub that contains these properties: LoanApplication.
+
+Below it are the **Event Name**, **Function Name** and **Web Resource Name**. Always open Show Details first; the summary line never tells you what broke.
 
 **Debug it:**
 
-1. Read the dialog carefully: the name it prints is the name **in the registration**, not in your file.
+1. Read the details carefully: the function name it prints is the name **in the registration**, not in your file. Here Dataverse even points at the fix: the closest object is `LoanHub`, and it has a property called `LoanApplication`.
 2. Open DevTools (F12) > **Console**. Form scripts run inside a separate frame, so first pick that frame in the Console's context dropdown (top-left, it says `top` by default; choose the frame whose name starts with **ClientApi**).
 3. Type `LoanHub.LoanApplication` and press Enter. If you see `{onLoad: ƒ}`, the file is fine and the registration is wrong.
 
@@ -189,7 +193,7 @@ Now we break the working script on purpose, six ways. Each one is a real failure
 
 **Break it:** edit the handler and untick the checkbox.
 
-**What you see:** a Script Error saying it **cannot read properties of undefined (reading 'getFormContext')**.
+**What you see:** the same Script Error summary. Under **Show Details**: **Cannot read properties of undefined (reading 'getFormContext')**, with the function and web resource names below it.
 
 **Debug it:**
 
@@ -229,7 +233,9 @@ Now we break the working script on purpose, six ways. Each one is a real failure
 
 **Fix it:** confirm the web resource was **published**, then hard refresh (Ctrl+F5). While developing, keep DevTools open with **Network > Disable cache** ticked.
 
-**Prevent it:** after every upload, check the code in the Sources tab before testing. It takes five seconds and saves hours of fixing code that was never running.
+**It's not only the file that gets cached.** The **form definition** is cached too: the list of libraries and handlers, and settings such as "Pass execution context". When I tested this series, a fixed and published handler kept failing with the old function name after a normal refresh. A hard refresh (Ctrl+Shift+R) picked up the change straight away.
+
+**Prevent it:** after every upload or form change, hard refresh, then check the code in the Sources tab before testing. It takes five seconds and saves hours of fixing code that was never running.
 
 ### Break 5: the column isn't on this form
 
@@ -374,7 +380,7 @@ request. Then rewrite it with a namespace and executionContext.
 - [ ] **The file:** is the web resource published? Does Sources show your latest code?
 - [ ] **The library:** is it on **this** form (the one the user actually gets)?
 - [ ] **The handler:** right event, function name copied exactly (with namespace), **Enabled** and **Pass execution context** ticked, form published?
-- [ ] **The browser:** hard refresh done, or Disable cache ticked?
+- [ ] **The browser:** hard refresh (Ctrl+Shift+R) after every upload or form change, or Disable cache ticked?
 - [ ] **The code:** a breakpoint on the first line is hit? Any red errors in the Console?
 
 ## Interview questions, with the answers that land
