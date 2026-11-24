@@ -77,8 +77,8 @@ Every form loads all its libraries into the same browser window. If two scripts 
 Create `loanapplication.js` on your machine:
 
 ```javascript
-// Web resource: new_/js/loanapplication.js
-// Table: Loan Application (new_loanapplication)
+// Web resource: lh_/js/loanapplication.js
+// Table: Loan Application (lh_loanapplication)
 var LoanHub = window.LoanHub || {};
 
 LoanHub.LoanApplication = (function () {
@@ -89,11 +89,11 @@ LoanHub.LoanApplication = (function () {
     // Registered on Form OnLoad with "Pass execution context as first parameter" ticked
     function onLoad(executionContext) {
         var formContext = executionContext.getFormContext();
-        var panVerified = formContext.getAttribute("new_panverified");
+        var panVerified = formContext.getAttribute("lh_panverified");
 
         if (!panVerified) {
             // The column isn't on this form: do nothing, but say so for whoever debugs
-            console.warn("LoanHub.LoanApplication.onLoad: new_panverified is not on this form");
+            console.warn("LoanHub.LoanApplication.onLoad: lh_panverified is not on this form");
             return;
         }
 
@@ -125,16 +125,16 @@ LoanHub.LoanApplication = (function () {
 
 1. In Power Apps, open your solution (never the Default solution).
 2. Select **New > More > Web resource**.
-3. **Display name:** Loan Application scripts. **Name:** `new_/js/loanapplication.js` (the prefix comes from your publisher; the folder-style name keeps web resources organised).
+3. **Display name:** Loan Application scripts. **Name:** `lh_/js/loanapplication.js` (the prefix comes from your publisher; the folder-style name keeps web resources organised).
 4. **Type:** JavaScript (JS). Upload the file.
 5. **Save**, then **Publish**.
 
 ### Step 3: add it to the form and register the handler
 
 1. Open the **Loan Application** main form in the form designer.
-2. In the left pane, open **Form libraries > Add library**, find `new_/js/loanapplication.js`, and add it.
+2. In the left pane, open **Form libraries > Add library**, find `lh_/js/loanapplication.js`, and add it.
 3. Open **Events** (with the form itself selected, not a field) > **On Load** > **Add event handler**.
-4. **Library:** `new_/js/loanapplication.js`. **Function:** `LoanHub.LoanApplication.onLoad` (exactly, including the namespace; no brackets).
+4. **Library:** `lh_/js/loanapplication.js`. **Function:** `LoanHub.LoanApplication.onLoad` (exactly, including the namespace; no brackets).
 5. Tick **Enabled** and **Pass execution context as first parameter**.
 6. **Save and publish** the form.
 
@@ -247,7 +247,7 @@ Below it are the **Event Name**, **Function Name** and **Web Resource Name**. Al
 
 ### Break 5: the column isn't on this form
 
-**Break it:** remove the guard and write `formContext.getAttribute("new_panverified").getValue()`. Then remove the PAN Verified column from the form.
+**Break it:** remove the guard and write `formContext.getAttribute("lh_panverified").getValue()`. Then remove the PAN Verified column from the form.
 
 **What you see:** a Script Error saying it **cannot read properties of null (reading 'getValue')**.
 
@@ -255,7 +255,7 @@ Below it are the **Event Name**, **Function Name** and **Web Resource Name**. Al
 
 1. The error's details include the file and line number. Open that line in Sources.
 2. Set a breakpoint, refresh, and hover the `getAttribute(...)` call: it returns **null**.
-3. `getAttribute` returns null when the column isn't on the form, or when the logical name is misspelled (`new_panverfied`).
+3. `getAttribute` returns null when the column isn't on the form, or when the logical name is misspelled (`lh_panverfied`).
 
 **Fix it:** put the column back on the form (it can be hidden), or keep the guard and handle the missing column.
 
@@ -356,7 +356,7 @@ AI is genuinely useful here, as long as you treat it like a fast junior develope
 Write a Dynamics 365 model-driven app form script in plain JavaScript
 (no TypeScript, no Xrm.Page). Use the namespace LoanHub.LoanApplication
 and executionContext.getFormContext(). On form load, if the column
-new_panverified is not true, show a WARNING form notification with a
+lh_panverified is not true, show a WARNING form notification with a
 unique ID; otherwise clear it. Guard against the column not being on
 the form. Tell me exactly how to register the handler.
 ```
@@ -379,7 +379,7 @@ request. Then rewrite it with a namespace and executionContext.
 ### Where AI goes wrong here
 
 - It still writes **`Xrm.Page`** often, because so much old sample code online uses it. Always say "no Xrm.Page".
-- It **invents logical names**: `panverified`, `new_PanVerified`. Logical names are lowercase and include your prefix; check every one against the table.
+- It **invents logical names**: `panverified`, `lh_PanVerified`. Logical names are lowercase and include your prefix; check every one against the table.
 - It **forgets the registration**. A perfect function with the wrong handler settings still does nothing. Ask it for the exact registration steps and check them against Step 3.
 - It **can't see your environment**. It doesn't know which form users get, what's cached, or what's published. The five-link chain is still your job.
 
