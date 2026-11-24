@@ -150,8 +150,14 @@ Get into the habit now, while it works:
 
 1. Press **F12** to open DevTools, go to **Sources**, and press **Ctrl+P**.
 2. Type `loanapplication` and open the file. If you can find it, **the library loaded**.
+
+   ![DevTools Sources tab with loanapplication.js open, next to the Loan Application form showing the PAN banner](/images/js-part1-sources.png)
 3. Click the line number next to `var formContext = ...` to set a **breakpoint**.
 4. Refresh the form. Execution stops on your line: **the handler is registered and called**.
+
+   ![Paused on breakpoint at line 12: Scope shows executionContext set and formContext still undefined](/images/js-part1-breakpoint.png)
+
+   Look at **Scope** on the right: `executionContext` has a value, while `formContext` and `panVerified` are still `undefined`, because line 12 hasn't run yet.
 5. Hover over `panVerified` to see its value, then press **F8** to continue.
 
 Those five steps check four of the five links in the chain. You'll use them in every part of this series.
@@ -182,8 +188,8 @@ Below it are the **Event Name**, **Function Name** and **Web Resource Name**. Al
 **Debug it:**
 
 1. Read the details carefully: the function name it prints is the name **in the registration**, not in your file. Here Dataverse even points at the fix: the closest object is `LoanHub`, and it has a property called `LoanApplication`.
-2. Open DevTools (F12) > **Console**. Form scripts run inside a separate frame, so first pick that frame in the Console's context dropdown (top-left, it says `top` by default; choose the frame whose name starts with **ClientApi**).
-3. Type `LoanHub.LoanApplication` and press Enter. If you see `{onLoad: ƒ}`, the file is fine and the registration is wrong.
+2. Open DevTools (F12) > **Console**. Form scripts don't run in the main page: they run inside hidden frames (their ids start with `ClientApiFrame_`). In the Console's context dropdown (top-left, it says `top` by default) these frames are listed as **id-NN (blank.htm)**, and the number changes on every page load. Pick each **blank.htm** entry in turn until the next step works. Shortcut: while execution is paused on a breakpoint in your file, the Console switches to your script's frame automatically.
+3. Type `LoanHub.LoanApplication` and press Enter. If you see `{onLoad: ƒ}`, the file is fine and the registration is wrong. In the `top` context you'll get `undefined` even when everything works, which is why the frame matters.
 
 **Fix it:** correct the function name in the form's event handler, save and publish the form.
 
