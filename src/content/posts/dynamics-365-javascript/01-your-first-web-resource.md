@@ -189,7 +189,9 @@ Below it are the **Event Name**, **Function Name** and **Web Resource Name**. Al
 
 1. Read the details carefully: the function name it prints is the name **in the registration**, not in your file. Here Dataverse even points at the fix: the closest object is `LoanHub`, and it has a property called `LoanApplication`.
 2. Open DevTools (F12) > **Console**. Form scripts don't run in the main page: they run inside hidden frames (their ids start with `ClientApiFrame_`). In the Console's context dropdown (top-left, it says `top` by default) these frames are listed as **id-NN (blank.htm)**, and the number changes on every page load. Pick each **blank.htm** entry in turn until the next step works. Shortcut: while execution is paused on a breakpoint in your file, the Console switches to your script's frame automatically.
-3. Type `LoanHub.LoanApplication` and press Enter. If you see `{onLoad: ƒ}`, the file is fine and the registration is wrong. In the `top` context you'll get `undefined` even when everything works, which is why the frame matters.
+3. Type `LoanHub.LoanApplication` and press Enter. If you see `{onLoad: ƒ}`, the file is fine and the registration is wrong. In the wrong frame you'll get **ReferenceError: LoanHub is not defined** even when everything works, which is why the frame matters:
+
+   ![Console: in frame id-41 LoanHub is not defined; after switching to id-39, LoanHub.LoanApplication returns {onLoad: ƒ}](/images/js-part1-console-frame.png)
 
 **Fix it:** correct the function name in the form's event handler, save and publish the form.
 
