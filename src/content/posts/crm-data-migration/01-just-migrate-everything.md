@@ -58,6 +58,13 @@ Then put every record into one of three groups:
 
 **The migration team does not choose the group. The business chooses, using facts from the migration team.** Your job in Part 1 is to give them those facts.
 
+**One more thing.** Microsoft splits data into two kinds:
+
+- **Setup data** (configuration data): things like currencies, branches, products and lookup values. This sets up the system.
+- **Migration data**: things like customers, loans and notes, which come from the old system.
+
+This series is about migration data. Setup data is loaded separately, before migration starts, usually with solutions or the Configuration Migration tool.
+
 ## The basics in simple words
 
 ### Why more data is not free
@@ -223,6 +230,7 @@ Archived does not mean lost. When a customer calls about an old loan, users must
 | Keep the cleaned staging tables in **Azure SQL**, read-only, with a simple report | Small team, people look things up only sometimes | Someone must own it and pay for it |
 | Load the archive into a **data lake** and show it through Power BI | The bank already has a data platform | Who can see sensitive data |
 | A **custom history table** in Dataverse with only summary fields | Users need to see "previous loans" on the customer form | It still uses Dataverse storage, so keep it small |
+| A **virtual table** in Dataverse that reads the archive from Azure SQL | Users want to see old loans inside Dynamics, without moving them | The data is read-only and can be slower to open. Test it with real users first |
 
 ## Step 5: get the plan signed
 
@@ -255,7 +263,7 @@ Four months later, when someone asks "Why didn't my 2014 notes come across?", th
 
 **Why it happens:** nobody reduced the number of rows. And every record has links (lookups and relationships), which add even more work.
 
-**How to fix it:** first reduce the volume (using the rules from Step 3). Then make the load faster (batches, running loads in parallel, turning plug-ins off during the load). Speed tuning alone rarely fixes a gap this big. Part 6 covers performance.
+**How to fix it:** first reduce the volume (using the rules from Step 3). Then make the load faster (batches, running loads in parallel, bypassing custom plug-ins only for the load requests, which is a supported option and doesn't affect other users). Speed tuning alone rarely fixes a gap this big. Part 6 covers performance.
 
 ### 3. "Where are my old notes?"
 
