@@ -176,6 +176,21 @@ That happens when unit tests hit a real environment. Keep the two layers apart: 
 
 Good test names fix this. "Clearing coapplicant on large loan is blocked" is documentation that can't go out of date, because the build fails if it does.
 
+## Using AI with this part
+
+AI is very good at writing tests. It is less good at choosing the right cases.
+
+**Good prompts:**
+
+- *"Write unit tests for this plugin [paste] with a fake Dataverse context. Cover: create, update with a missing column, update that clears a column, wrong record state, and a second run of the same message."*
+- *"Here are three production bugs we had [describe]. Write a test that would have caught each one."*
+
+**Where AI gets it wrong:**
+
+- It tests only the happy path.
+- It mocks so much that the test checks the mock, not the plugin.
+- It writes tests that need a real environment, so they are slow and get deleted, exactly as in the Day-2 section.
+
 ## Checklist
 
 - Every rule plugin has unit tests that run without an environment.

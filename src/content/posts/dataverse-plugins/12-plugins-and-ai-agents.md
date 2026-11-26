@@ -113,6 +113,38 @@ It would be easy to end with "AI changes everything". It doesn't. Look back at t
 
 Agents don't replace any of that. They reward the teams who did it, and expose the ones who didn't.
 
+## Day-2 situations tutorials never show
+
+### "The agent keeps retrying the same failed request"
+
+The plugin returned a vague error, so the agent tried again and again.
+**How to fix it:** return clear error messages that say what is wrong and whether a retry will help, as in section 2 of this part.
+
+### "An agent created the same loan twice"
+
+A timeout made the agent retry, but the first request had already worked.
+**How to fix it:** make the operation idempotent with a request ID, as in section 3.
+
+### "The agent could see data the user couldn't"
+
+The agent's connection used a powerful service account.
+**How to fix it:** give each agent its own identity with the smallest security role it needs, and audit what it changes.
+
+## Using AI with this part
+
+Here the AI is both the tool you build with and the caller you build for.
+
+**Good prompts:**
+
+- *"Here is my Custom API [paste]. Rewrite the error messages so an AI agent knows whether to retry, ask the user, or stop."*
+- *"List every operation an agent needs on the loan application table, and the smallest security role for each."*
+
+**Where AI gets it wrong:**
+
+- It gives agents direct update access to raw columns instead of clear operations.
+- It assumes the agent will call the API once. Agents retry.
+- It forgets that agents never see your form logic, so only server-side rules protect the data.
+
 ## Checklist for an agent-ready Dataverse
 
 - Every business rule that matters is enforced on the server, not only in forms.

@@ -169,6 +169,20 @@ That plugin will be the slowest thing in the system. Ask whether the 300 updates
 
 You can't change their code, but you can see it in the trace log, raise it with the vendor, and check whether their steps have filtering attributes you're allowed to configure. Know your whole table, not just your code.
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here is my plugin [paste]. List every call to Dataverse, which columns it asks for, and how to cut the number of calls."*
+- *"Rewrite this loop of 300 Update calls to use UpdateMultiple, and keep the same error handling."*
+- *"Here are timings from my trace log [paste]. Which step is the slowest, and why?"*
+
+**Where AI gets it wrong:**
+
+- It uses `new ColumnSet(true)` and reads every column.
+- It updates records one by one inside a loop.
+- It suggests making everything asynchronous, even when the user needs the result before the save finishes.
+
 ## Checklist
 
 - I have a list of every step on the busy tables, with owner and purpose.

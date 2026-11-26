@@ -29,7 +29,7 @@ Three weeks later, the Hyderabad branch manager sends the project team this list
 
 Not one of these is a bug in the data, security or code. **The app was built around the tables, not around the loan officer's day.** Items 1 to 4 are design problems. Items 5 and 6 are configuration problems that real teams hit every week, as we'll see in the Day-2 section.
 
-By the end of this part you'll know how to design the app layer for a role, step by step, how to use AI inside it, and how to debug it when users say "it's not there".
+By the end of this part you'll know three things: how to design the app layer for a role, how to use AI inside it, and how to debug it when users say "it's not there".
 
 ## The thought shift
 
@@ -43,7 +43,7 @@ Flip the order. Before you open the app designer, write down for each role:
 - **What are the 3 to 5 actions they repeat all day?** Those become command bar buttons.
 - **What should they never see?** That stays out of their app and their role.
 
-Think of the bank branch from Part 2. The tables are the filing cabinets in the back room. A model-driven app is **the office for one business process**: loan officers, credit analysts and the branch manager all work in it, but each person's desk shows what their role needs, and some drawers are locked for some people. **Build the app around the process, then shape each role's view inside it.**
+Think of the bank branch from Part 2. The tables are the filing cabinets in the back room. A model-driven app is **the office for one business process**. Loan officers, credit analysts and the branch manager all work in it. But each person's desk shows what their role needs, and some drawers are locked for some people. **Build the app around the process, then shape each role's view inside it.**
 
 ## The concepts in simple words
 
@@ -65,12 +65,12 @@ Knowing these four facts will solve most of the Day-2 problems later in this art
 
 1. **An app only shows what it includes.** A form, view or BPF that exists on the table but isn't added to the app is invisible inside that app. Each component has its own inclusion list in the app designer.
 2. **Forms and apps are secured by roles.** You can assign each form to security roles, and each app to security roles. A user sees the first form, in form order, that their role allows.
-3. **Each active BPF is its own Dataverse table.** When you activate a BPF, Dataverse creates a table to track every instance: which record it runs on, the active stage and the path taken. Users need privileges on that table, like any other.
+3. **Each active BPF is its own Dataverse table.** When you activate a BPF, Dataverse creates a table to track every instance. It stores which record it runs on, the active stage and the path taken. Users need privileges on that table, like any other.
 4. **BPFs and business rules also read process definitions.** They load their definitions from the Process (workflow) table, so users need read access there too. We'll see exactly how this breaks in production.
 
 ## Implementation 1: one app for the lending process, shaped by role inside it
 
-The manager's complaint 6 ("everyone sees everything") tempts teams to build one app per role. In real projects that rarely works: the same people hold **several roles** (a senior officer is also a credit analyst on Saturdays, the branch manager approves and also creates loans), and they don't want to jump between three apps to finish one loan.
+The manager's complaint 6 ("everyone sees everything") tempts teams to build one app per role. In real projects that rarely works. The same people hold **several roles**. A senior officer is also a credit analyst on Saturdays. The branch manager approves loans and also creates them. Nobody wants to jump between three apps to finish one loan.
 
 The usual production pattern is **one app per business process**, shared with every role that works in that process, and **role-based tailoring inside the app**.
 
@@ -100,7 +100,7 @@ The usual production pattern is **one app per business process**, shared with ev
 
 ### What happens when a user has several roles
 
-Dataverse **combines** the roles. The user gets the highest privilege from any of them, sees every app shared with any of their roles, and gets the first form in form order that any of their roles allows. So put the **richest form first** (Branch Manager), then the Loan Officer form, so a manager who is also an officer gets the manager's view.
+Dataverse **combines** the roles. The user gets the highest privilege from any of them. They see every app shared with any of their roles. And they get the first form, in form order, that any of their roles allows. So put the **richest form first** (Branch Manager), then the Loan Officer form, so a manager who is also an officer gets the manager's view.
 
 ### When a separate app is the right call
 
@@ -131,7 +131,7 @@ Complaint 2 ("I keep an Excel sheet") disappears when the default view becomes a
 3. Set **My loans waiting on documents** as the app's default view for loan applications.
 4. Add a chart on top of the view (loans by stage) and pin it to the officer dashboard.
 
-**Tip:** "Days in stage" is not a built-in column. Keep it as a calculated or formula column on the loan, or read it from the BPF table's active stage start time, which we'll cover with the BPF.
+**Tip:** "Days in stage" is not a built-in column. Keep it as a calculated or formula column on the loan. Or read it from the BPF table's active stage start time, which we'll cover with the BPF.
 
 ## Implementation 3: forms that show what this role needs, in the order they collect it
 
@@ -192,7 +192,7 @@ Every loan follows the same top row. Only loans of ₹1 crore and above are rout
 
 ### What a BPF does **not** do
 
-A required step only stops the user from clicking **Next stage** in the bar. It does **not** stop someone from updating the record through an import, a flow, the API or a plugin. If verification is a compliance rule and not just guidance, enforce it on the server too, for example with a synchronous plugin from Part 3: "don't allow status = Approved unless PAN verified = Yes". **The BPF guides; the server enforces.**
+A required step only stops the user from clicking **Next stage** in the bar. It does **not** stop someone from updating the record through an import, a flow, the API or a plugin. If verification is a compliance rule, not just guidance, enforce it on the server too. For example, use a synchronous plugin from Part 3: "don't allow status = Approved unless PAN verified = Yes". **The BPF guides; the server enforces.**
 
 ### Using the BPF table itself
 
@@ -204,7 +204,7 @@ Because each active BPF is its own table, every loan has a matching **Loan Appro
 
 ## Implementation 5: JavaScript for the command bar and the BPF, and the security that ties it together
 
-Complaint 4 ("to send a loan for approval they change a Status field, and half the time pick the wrong status") is a command bar job: one button that sets the right status every time. And the BPF needs to push back when an officer tries to skip Verification. Both are done here with **JavaScript web resources and the Dataverse Client API (`Xrm`)**, the way most CRM teams already work.
+Complaint 4 was: "to send a loan for approval they change a Status field, and half the time pick the wrong status". That's a command bar job: one button that sets the right status every time. And the BPF needs to push back when an officer tries to skip Verification. Both are done here with **JavaScript web resources and the Dataverse Client API (`Xrm`)**, the way most CRM teams already work.
 
 ### Step 1: create the web resource
 
@@ -344,7 +344,7 @@ LoanHub.LoanApplication = (function () {
 2. Under **Events > On Load**, add the handler: library `new_/js/loanapplication.js`, function `LoanHub.LoanApplication.onLoad`, and tick **Pass execution context as first parameter**.
 3. Save and publish. You don't register the stage events on the form: `onLoad` attaches them with `addOnPreStageChange` and `addOnStageChange`.
 
-Now an officer who clicks **Next stage** in Verification without documents stays where they are and sees a yellow warning, and the Documents tab only appears during Verification.
+Now an officer who clicks **Next stage** in Verification without documents stays where they are and sees a yellow warning. The Documents tab only appears during Verification.
 
 ### Step 3: wire the command buttons
 
@@ -354,7 +354,7 @@ Now an officer who clicks **Next stage** in Verification without documents stays
 4. Repeat on the **Main grid** command bar with function `LoanHub.LoanApplication.sendSelectedForApproval` and parameters **SelectedControlSelectedItemIds** and **SelectedControl**.
 5. Save and publish.
 
-**Showing the button only for verified loans:** in the modern command designer, visibility is set with a one-line formula (`Self.Selected.Item.'Loan Status' = 'Loan Status (Loan Applications)'.Verified`). If your team keeps everything in JavaScript, add the button through the classic ribbon (for example with Ribbon Workbench) and use `LoanHub.LoanApplication.isVerified` as a **custom enable rule**. Either way, the JavaScript action itself also checks the status, so a wrong click can never send an unverified loan.
+**Showing the button only for verified loans:** in the modern command designer, visibility is set with a one-line formula (`Self.Selected.Item.'Loan Status' = 'Loan Status (Loan Applications)'.Verified`). If your team keeps everything in JavaScript, add the button through the classic ribbon, for example with Ribbon Workbench. Then use `LoanHub.LoanApplication.isVerified` as a **custom enable rule**. Either way, the JavaScript action itself also checks the status, so a wrong click can never send an unverified loan.
 
 ### What the code does, and the CRM rules behind it
 
@@ -367,7 +367,7 @@ Now an officer who clicks **Next stage** in Verification without documents stays
 
 ### Good to know
 
-- Commands are **per app**. If you later build a separate admin or collections app, the button doesn't appear there unless you add it. Within this app, show **Approve** only to managers by checking the role in an enable rule, for example with `Xrm.Utility.getGlobalContext().userSettings.roles`, and still enforce it on the server.
+- Commands are **per app**. If you later build a separate admin or collections app, the button doesn't appear there unless you add it. In this app, show **Approve** only to managers. Check the role in an enable rule, for example with `Xrm.Utility.getGlobalContext().userSettings.roles`. And still enforce it on the server.
 - JavaScript runs only in the browser. A required step or a `preventDefault()` stops the click, not an import, a flow or the API. Real enforcement stays in the role and in server-side logic, such as a plugin.
 - Keep heavy logic (calling external APIs, creating many related records) out of the browser. Let the button set a status and let a plugin or a flow do the work.
 
@@ -444,19 +444,19 @@ These are the problems that come up again and again once real users start workin
 
 **What the user sees:** everything worked last month. After the security team "simplified" the roles, BPFs, on-demand workflows and flows stopped showing for a group of users.
 
-**Why it happens:** the new minimal role was copied from a basic role that doesn't carry the process-related privileges: Process read, the BPF tables, and the related system tables.
+**Why it happens:** the new minimal role was copied from a basic role. That role doesn't have the process privileges: Process read, the BPF tables and the related system tables.
 
 **How to handle it:**
 
 1. Build business roles from a role you've already proved works with your BPFs, not from the smallest built-in role.
 2. Document which privileges each BPF needs (its table, Process read) next to the role design.
-3. Keep **one test user per role** and run a short smoke test (open a loan, move a stage, run the command) after every security change.
+3. Keep **one test user per role**. After every security change, run a short test: open a loan, move a stage, run the command.
 
 ### 6. "The form is slow" or "a field doesn't show"
 
 **What the user sees:** the loan form takes several seconds to open, or a field that should be there isn't.
 
-**Why it happens:** too many fields and subgrids on the first tab, a script or business rule hiding the field, or the field not being on this role's form at all.
+**Why it happens:** there are three usual causes. Too many fields and subgrids on the first tab. A script or business rule hiding the field. Or the field isn't on this role's form at all.
 
 **How to handle it:**
 
@@ -468,7 +468,7 @@ These are the problems that come up again and again once real users start workin
 
 **What the user sees:** the **Send for approval** button appears for you, but not for an officer, or only on the grid and not on the form.
 
-**Why it happens:** the button's visibility or enable rule returned false, the command was added to only one command bar (grid, form or subgrid), or it was added to a different app.
+**Why it happens:** there are three usual causes. The button's visibility or enable rule returned false. The command was added to only one command bar (grid, form or subgrid). Or it was added to a different app.
 
 **How to handle it:**
 
@@ -569,15 +569,15 @@ First, whether the BPF is added to the app and assigned to the user's role. Then
 
 **2. Is a BPF a security control?**
 
-No. Required steps only stop a user from moving the stage in the UI. Imports, flows, the API and plugins can still update the record. If the rule is compliance, I enforce it on the server, for example with a synchronous plugin that blocks Approved status unless verification is complete.
+No. Required steps only stop a user from moving the stage in the UI. Imports, flows, the API and plugins can still update the record. If the rule is about compliance, I enforce it on the server too. For example, a synchronous plugin blocks Approved status unless verification is complete.
 
 **3. One app per role, or one app for everyone?**
 
-Neither, strictly. I build one app per business process and share it with all the roles in that process, because real users often hold several roles and shouldn't switch apps mid-task. Inside the app I tailor by role: role-based forms and dashboards, "current user" views, privileges that hide site map pages, command visibility rules and column security. I split into a separate app only when the work is genuinely different: admin and configuration, field or offline users, or a different process like collections. When a user has several roles, Dataverse combines them, so I order forms with the richest one first.
+Neither, strictly. I build one app per business process and share it with all the roles in that process. Real users often hold several roles and shouldn't switch apps in the middle of a task. Inside the app I tailor by role: role-based forms and dashboards, "current user" views, privileges that hide site map pages, command visibility rules and column security. I split into a separate app only when the work is genuinely different: admin and configuration, field or offline users, or a different process like collections. When a user has several roles, Dataverse combines them, so I order forms with the richest one first.
 
 **4. How do you report on how long loans sit in each stage?**
 
-From the BPF's own table. Each instance row has the active stage and when it started, so I can build views, charts and flows on it, instead of adding tracking fields to the main table.
+From the BPF's own table. Each instance row has the active stage and when it started. So I can build views, charts and flows on it, instead of adding tracking fields to the main table.
 
 **5. How would you add a "Send for approval" button today?**
 
@@ -585,7 +585,7 @@ A JavaScript web resource in a namespace, called from a modern command with **Ru
 
 **6. What would you check before enabling Copilot form fill for a client?**
 
-Whether it's GA or preview for their app type and region, that an admin can enable it, and which fields are behind column security, because those aren't supported by smart paste. And that users still review every suggested value before saving.
+Three things: whether it's generally available or still in preview for their app type and region, whether an admin can turn it on, and which fields use column security, because smart paste doesn't support those. And that users still review every suggested value before saving.
 
 **7. How do you stop a user moving a BPF stage forward from JavaScript?**
 

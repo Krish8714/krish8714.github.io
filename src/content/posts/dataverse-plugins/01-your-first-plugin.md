@@ -269,6 +269,24 @@ Update LN-20481: depth=1, amount=14000000, threshold=10000000, coApplicant=False
 
 **Tool 3, unit tests (catch it before anyone files a ticket).** Each Day-2 situation is a test case. A framework such as FakeXrmEasy builds the context, `Target` and images in memory so they run on every build (check its licence for commercial use). That is how rows 1 to 9 of the test matrix were run for this guide.
 
+## Using AI with this part
+
+AI can write a working plugin in seconds. The skill is checking it against the production rules in this part.
+
+**Good prompts:**
+
+- *"Here is my plugin [paste]. Check it against these rules: the Target may not contain every column, read missing columns from the PreImage, no static fields that hold state, InvalidPluginExecutionException with a clear message for the user. List every rule it breaks."*
+- *"Write a test matrix for this plugin: create, update with only one column, update from an integration, bulk import, and a record with a co-applicant."*
+- *"Explain this trace log [paste] in simple words. Which line shows where it failed?"*
+
+**Where AI gets it wrong:**
+
+- It reads a column straight from the Target and assumes it is always there. On an Update it often isn't.
+- It stores values in static fields, which leak between plugin runs.
+- It throws generic exceptions, so the user sees "An unexpected error occurred" instead of a clear message.
+- It suggests the old `Xrm.Page` style or outdated SDK calls. Check every API name against Microsoft Learn.
+- Never paste real customer data or connection strings into an AI tool.
+
 ## The production-readiness checklist
 
 Ten questions to answer before **any** plugin ships, not just this one. Copy it into your pull-request template.

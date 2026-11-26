@@ -193,6 +193,20 @@ tracing.Trace("stage={0} depth={1} inTxn={2} targetId={3}",
     target.Id == Guid.Empty ? "(none yet)" : target.Id.ToString());
 ```
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here is my requirement: [describe]. Should this plugin run in PreValidation, PreOperation or PostOperation, synchronous or asynchronous? Explain the choice in three lines, and say what would break with each wrong stage."*
+- *"I have two steps on Update of loan application, order 1 and 2, both PreOperation. Here is what each does [paste]. Can they conflict?"*
+
+**Where AI gets it wrong:**
+
+- It picks PostOperation for validation. Validation belongs before the save, in PreValidation or PreOperation.
+- It forgets that PreValidation can run outside the database transaction, so a rollback later doesn't undo what it did.
+- It ignores business rules and real-time workflows that also change the same column.
+- Always prove the AI's answer with a quick trace in your developer environment, as shown in this part.
+
 ## Checklist before you register a step
 
 - I can say in one sentence why this stage, not "because the last one used it".

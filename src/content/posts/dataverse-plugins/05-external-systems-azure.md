@@ -157,6 +157,20 @@ The external API got slower, or TLS settings on their side changed. Your trace l
 
 You called core banking from a synchronous plugin, and a later plugin in the same transaction threw. Dataverse rolled back; the external call can't be rolled back. Never make non-reversible external calls inside a synchronous transaction. Hand off after commit (async).
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here is my plugin that calls an external API [paste]. Check it for sandbox rules: timeout under 2 minutes, no local files, HTTPS only, secrets not in code, one HttpClient."*
+- *"Rewrite this plugin so it publishes the event to Azure Service Bus and lets an Azure Function do the slow call."*
+
+**Where AI gets it wrong:**
+
+- It writes long synchronous calls to slow APIs inside the plugin, which hit the 2-minute limit.
+- It puts API keys in the plugin code or in unsecure configuration.
+- It retries in a loop inside the plugin, which makes timeouts worse and can create duplicates.
+- Never paste real API keys or customer data into an AI tool.
+
 ## Checklist
 
 - Every external call from a synchronous plugin has an explicit short timeout and KeepAlive disabled.

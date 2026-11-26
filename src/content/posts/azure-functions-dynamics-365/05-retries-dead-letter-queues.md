@@ -11,7 +11,7 @@ linkedin: "https://www.linkedin.com/pulse/part-5-when-things-fail-retries-dead-l
 
 *📚 This is Part 5 of my series "Azure Functions with Dynamics 365". New here? Start with* [*Part 1*](/posts/azure-functions-dynamics-365/01-beginner-tutorial/)*, or read the previous one:* [*Part 4: Webhooks vs Service Bus for Dataverse events*](/posts/azure-functions-dynamics-365/04-webhooks-vs-service-bus/)*.*
 
-*Updated November 2026: new sections on what breaks after go-live (Day 2) and on using AI.*
+*Updated November 2026: new sections on what breaks after go-live (Day 2), on using AI, and a checklist.*
 
 ## Why this part comes next
 
@@ -303,6 +303,18 @@ Microsoft ended support for the in-process model and for .NET 8 on 10 November 2
 4.  **Service Bus is "at least once". How do you stop a loan being scored twice?** (Hint: an idempotency key saved with the result, checked before the work.)
 5.  **A webhook-triggered Function gets invalid data. What status code should it return, and why?** (Hint: not one that makes Dataverse retry forever.)
 6.  **The bureau was down for three hours and 900 messages were dead-lettered. How do you recover?** (Hint: fix the cause, replay from the dead-letter queue, and rely on idempotency to skip the ones already done.)
+
+## Checklist
+
+- [ ] Max delivery count set on purpose (not left at 10 without thinking)
+- [ ] Lock duration longer than the slowest call plus the Dataverse update
+- [ ] Bad data dead-lettered at once with a clear reason; outages retried with a growing delay
+- [ ] No extra retry loop inside the Function on top of Service Bus retries
+- [ ] Every message safe to process twice (idempotency key checked before calling the bureau)
+- [ ] A Function or job reading the dead-letter queue, writing errors back to Dataverse
+- [ ] Separate alerts: bad data to business users, outages to support
+- [ ] A tested way to replay dead letters in small batches
+- [ ] Isolated worker model, .NET 10
 
 ## Conclusion
 

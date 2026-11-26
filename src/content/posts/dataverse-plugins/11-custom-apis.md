@@ -146,6 +146,20 @@ Decide when you create the API whether to allow custom processing steps (none, a
 
 Exactly the risk of modelling operations as field changes. Move it to a Custom API with a privilege, and the bulk edit can't trigger it.
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"I need a Custom API for [describe]. Suggest the name, request parameters and response properties, and say whether it should be a function or an action."*
+- *"Write the plugin for this Custom API [paste definition], with clear error messages for each failure case."*
+- *"Is a plugin the right tool for this requirement [describe], or should it be a Custom API, a flow or Azure?"*
+
+**Where AI gets it wrong:**
+
+- It designs parameters too loosely (one big text field with JSON inside) instead of clear typed parameters.
+- It forgets that changing a parameter's type later is hard, as the Day-2 section shows.
+- It picks a plugin on a trigger column when a Custom API would be clearer.
+
 ## Checklist
 
 - Business operations that touch several records are Custom APIs, not trigger fields.

@@ -134,6 +134,19 @@ Your plugin made the change as SYSTEM and didn't record the human. Store `Initia
 
 It was in unsecure configuration. Rotate it, move it to Key Vault or secure configuration, and add a pipeline check that fails if unsecure configuration contains anything that looks like a key.
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here is my plugin [paste]. Which user does each call run as: UserId, InitiatingUserId or SYSTEM? Where could it read or change data the user isn't allowed to see?"*
+- *"Review this plugin for secrets: keys in code, keys in unsecure configuration, keys written to the trace log."*
+
+**Where AI gets it wrong:**
+
+- It runs everything as SYSTEM because that makes errors go away. That hides security problems instead of fixing them.
+- It mixes up UserId and InitiatingUserId.
+- It puts secrets in unsecure configuration, which travels in the solution export.
+
 ## Checklist
 
 - Every `CreateOrganizationService` call has a deliberate identity: UserId, InitiatingUserId or null (SYSTEM).

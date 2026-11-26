@@ -171,6 +171,36 @@ tracing.Trace("{0} {1} {2} depth={3} cols=[{4}]",
 
 That one line pays for itself the first time something goes wrong.
 
+## Day-2 situations tutorials never show
+
+### "It worked for months, then a new flow started a loop"
+
+Someone added a cloud flow that updates the same table. Your plugin updates a column, the flow fires, the flow updates another column, and your plugin fires again.
+**How to fix it:** set filtering attributes on both sides, and keep a list of every plugin and flow that writes to the table.
+
+### "The Depth check blocked a real update"
+
+A `Depth > 1` check stopped a legitimate update that came from another plugin or a Custom API.
+**How to fix it:** use the better loop stoppers from this part (filtering attributes, compare old and new values, mark your own updates). Keep Depth only as a last guard with a high limit and a trace message.
+
+### "Imports are slow and full of plugin errors"
+
+A bulk import set off a long chain of plugins, and each save waited for the whole chain.
+**How to fix it:** bypass custom logic for migration loads where your team allows it, and run the business logic afterwards in a controlled batch.
+
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here are all the plugin steps and flows on the loan application table [paste a list]. Draw the chain: what updates what, and where a loop is possible."*
+- *"Here is my trace log from a loop [paste]. Which step started it and which column keeps changing?"*
+
+**Where AI gets it wrong:**
+
+- Its first answer is almost always "add `if (context.Depth > 1) return;`". This part explains why that is dangerous.
+- It forgets that cloud flows and other plugins are part of the chain.
+- It suggests turning off the step instead of fixing the cause.
+
 ## Checklist
 
 - No plugin updates the record it is registered on from PostOperation. It sets the Target in PreOperation.

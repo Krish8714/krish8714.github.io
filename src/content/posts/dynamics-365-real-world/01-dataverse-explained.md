@@ -28,7 +28,7 @@ Here's what that looks like on a normal Tuesday:
 
 The bank decides to move to Dynamics 365. The first instinct of most teams is to create a table called "Loan" with 46 columns, one per Excel heading, and import the file.
 
-That's the mistake this article is about. **A spreadsheet stores rows of text. A data model stores things the business cares about, and the relationships between them.** Get this layer wrong and every later part of the system (security, logic, apps, reporting, integration, migration) inherits the problem.
+That's the mistake this article is about. **A spreadsheet stores rows of text. A data model stores things the business cares about, and the relationships between them.** Get this layer wrong, and every later layer inherits the problem: security, logic, apps, reporting, integration and migration.
 
 ## The thought shift
 
@@ -80,14 +80,14 @@ You can't switch ownership type after the table is created. Decide it on day one
 ### Relationships and cascade behaviour
 
 - **1:N (one-to-many):** one customer, many loans. The "many" side gets a lookup column.
-- **N:N (many-to-many):** many guarantors, many loans. Dataverse can create a hidden link table for you (native N:N), or you can build your own link table (manual N:N) when the link needs its own columns, such as "guarantee share %".
+- **N:N (many-to-many):** many guarantors, many loans. Dataverse can create a hidden link table for you (native N:N). Or you can build your own link table (manual N:N) when the link needs its own columns, such as "guarantee share %".
 - **Cascade behaviour** decides what happens to child rows when the parent is deleted, assigned, shared or reparented. Getting it wrong is the fastest way to lose data. We'll set it deliberately in Implementation 3.
 
 ## Implementation 1: a solution and the Loan Application table, the right way
 
 **Steps:**
 
-1. In Power Apps, open **Solutions** and create a **publisher** with your organization's prefix. In this series the examples use `new_` so they're easy to read; in a real project, use your own prefix (for example `lh_`) so every column name tells you who owns it.
+1. In Power Apps, open **Solutions** and create a **publisher** with your organization's prefix. In this series the examples use `new_` so they're easy to read. In a real project, use your own prefix (for example `lh_`). Then every column name tells you who owns it.
 2. Create a solution called **Lending Core** using that publisher. Every table, column and relationship goes in this solution from the start. Never build in the Default solution.
 3. In the solution, select **New > Table**, name it **Loan Application** (plural: Loan Applications).
 4. Under **Advanced options**:
@@ -98,7 +98,7 @@ You can't switch ownership type after the table is created. Decide it on day one
 5. Primary column: **Loan Number**. This is what users see in lookups and views, so make it meaningful (we'll make it an autonumber in Implementation 4).
 6. Save.
 
-**Why a solution from minute one:** everything you build here has to travel to test and production later. Components created outside a solution are hard to find, easy to forget, and are the reason "it works in dev" so often fails in test.
+**Why a solution from minute one:** everything you build here has to travel to test and production later. Components created outside a solution are hard to find and easy to forget. They are a common reason why "it works in dev" fails in test.
 
 ## Implementation 2: the right column types
 
@@ -154,9 +154,9 @@ Two different needs, often confused:
 1. Change the primary column **Loan Number** to the **Autonumber** data type with a format such as `LN-{SEQNUM:6}`. Dataverse assigns the next number on create; nobody types it.
 2. Add a text column **Legacy Loan ID**.
 3. Open **Keys > New key**, name it **Legacy Loan ID key**, and select the Legacy Loan ID column.
-4. Wait for the key's status to become **Active**. Dataverse builds a unique index in the background; on a table that already has data this can take time, and it **fails if duplicates already exist** (see Day 2).
+4. Wait for the key's status to become **Active**. Dataverse builds a unique index in the background. On a table with data, this can take time. It **fails if duplicates already exist** (see Day 2).
 
-With the key in place, the data migration series uses **upsert**: send the row with its legacy ID, and Dataverse creates it if it's new or updates it if it exists. Re-running a load never creates duplicates.
+With the key in place, the data migration series uses **upsert**. You send the row with its legacy ID. Dataverse creates it if it's new, or updates it if it exists. Re-running a load never creates duplicates.
 
 ## Implementation 5: let the system do the maths
 
@@ -251,7 +251,7 @@ Prevention: decide types in a data-model review before anyone builds.
 
 1. For display, accept the delay and show "Last updated" next to the value.
 2. If someone needs it now, they can recalculate the rollup from the form.
-3. If a business rule depends on the total ("no customer may exceed ₹2 crore"), calculate it in a **plugin** at the moment of save (Part 3B), not from a rollup.
+3. Sometimes a business rule depends on the total, like "no customer may exceed ₹2 crore". Then calculate it in a **plugin** at the moment of save (Part 3B), not from a rollup.
 
 ### 6. Choice values that don't match between environments
 
@@ -336,7 +336,7 @@ Before anyone builds forms or logic on top of the model:
 
 **2. What's the difference between an alternate key and an autonumber column?**
 
-An autonumber is a readable value Dataverse generates for people, like LN-004821. An alternate key is a uniqueness guarantee on one or more columns that systems use to find a row without its GUID, which makes upserts and integrations idempotent.
+An autonumber is a readable value Dataverse generates for people, like LN-004821. An alternate key makes one or more columns unique. Other systems use it to find a row without its GUID. That makes upserts and integrations safe to repeat.
 
 **3. A customer was deleted and their loans disappeared. What happened, and how do you prevent it?**
 

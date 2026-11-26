@@ -125,6 +125,19 @@ Now production differs from source control, and the next release will undo the f
 
 Plugins target .NET Framework, not .NET (Core). Microsoft has published that support for .NET Framework 4.6.2 ends in January 2027 and announced plans for 4.8 support in the plugin runtime. Check the current guidance on Microsoft Learn and plan the retargeting as a deliberate, tested change across all your plugin projects.
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Write a GitHub Actions or Azure DevOps pipeline that builds my plugin, runs the unit tests, packs the solution and deploys the same file to test and production."*
+- *"Here is my solution's version history [paste]. Is my plugin versioning safe for this change?"*
+
+**Where AI gets it wrong:**
+
+- It builds the solution again for each environment instead of deploying the same file everywhere.
+- It changes the assembly version in ways that block updates.
+- It uses old tools or old task names. Check every task against the current Power Platform Build Tools documentation.
+
 ## Checklist
 
 - Plugin code and the unpacked solution live in source control.

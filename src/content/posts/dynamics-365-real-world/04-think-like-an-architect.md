@@ -30,7 +30,7 @@ The candidate answers in two seconds: "A plugin."
 
 "…Plugins are more powerful."
 
-The answer was right. The reasoning wasn't there, and the panel noticed. In real projects the same habit causes real damage: teams pick the tool they know best, then discover months later that the rule doesn't hold on imports, or that a "simple" flow is blocking 300 users.
+The answer was right. The reasoning wasn't there, and the panel noticed. In real projects this habit causes real damage. Teams pick the tool they know best. Months later they find the rule doesn't hold on imports, or a "simple" flow is blocking 300 users.
 
 ## The thought shift: four questions
 
@@ -153,7 +153,7 @@ Even if the panel had a different tool in mind, they've seen how you reason, and
 
 ### 4. The rollback that didn't roll back
 
-**What you see:** a sync plugin calls the core banking API, then a later plugin fails and the save is rolled back, but core banking already has the loan.
+**What you see:** a sync plugin calls the core banking API. Then a later plugin fails and the save is rolled back. But core banking already has the loan.
 
 **Which question was skipped:** "What happens if it fails?"
 
@@ -180,7 +180,7 @@ any external call inside a transaction, and any identity with more
 access than it needs.
 ```
 
-**Where AI goes wrong here:** it often answers with the most common tool for the keyword ("approval" → flow, "validation" → JavaScript) unless you force it through the four questions. Make it show its reasoning, then check it.
+**Where AI goes wrong here:** it often picks the most common tool for the keyword ("approval" → flow, "validation" → JavaScript). Make it answer the four questions first. Make it show its reasoning, then check it.
 
 ## Checklist for every new requirement
 

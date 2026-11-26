@@ -179,6 +179,20 @@ An EntityReference in the Target often has `Name` empty. Don't build logic or me
 
 Calculated and rollup columns are computed on read or on a schedule. Don't base server-side validation on them; compute what you need from the source columns.
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here is a Target from my trace log [paste]. Which columns were sent, which are null, and which are simply not there?"*
+- *"Write a helper that reads a column from the Target first and falls back to the PreImage, and tells me whether the value was cleared or just not sent."*
+- *"Which image (pre or post) and which columns should I register for this logic [describe]? Keep the list as short as possible."*
+
+**Where AI gets it wrong:**
+
+- It treats "column not in the Target" and "column set to null" as the same thing. They mean different things.
+- It registers images with all columns. That is slower and copies data you don't need.
+- It expects formatted values and lookup names to always be present. Often they aren't.
+
 ## Checklist
 
 - I know what shape the Target has for the message I'm on (Entity, EntityReference, or none).

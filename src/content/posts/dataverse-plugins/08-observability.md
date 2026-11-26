@@ -149,6 +149,20 @@ Your plugin let a non-plugin exception escape (null reference, key not found). T
 
 Treat it as a data handling issue: fix the code, and remember the trace log is readable by anyone with access to that table. Log IDs.
 
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here is a plugin trace log [paste, with personal data removed]. Summarise what happened in five lines and point to the failing line."*
+- *"Write a KQL query for Application Insights that shows plugin errors per hour for the last day, grouped by plugin name."*
+- *"Add structured logging to this plugin [paste]: the record ID and a correlation ID on every line, and no personal data."*
+
+**Where AI gets it wrong:**
+
+- It logs whole records, which puts personal data in the logs.
+- It writes so many trace lines that the important one gets cut off.
+- It suggests turning trace logging to "All" in production and leaving it on.
+
 ## Checklist
 
 - Every plugin traces START (message, entity, ID, depth, columns, correlation ID), DECIDE (inputs to the rule) and timings for external calls.

@@ -1,6 +1,6 @@
 ---
 title: "Processing Heavy Dataverse Workloads with Durable Functions"
-description: "Processing enterprise-scale batch workloads against Microsoft Dataverse exposes the architectural boundary between transactional business applications and distributed computing engines. When an…"
+description: "How to process 250,000 Dataverse loan records every night without timeouts, duplicates or a stuck queue, using Azure Durable Functions, in simple English with working code."
 series: azure-functions-dynamics-365
 part: 3
 pubDate: 2026-09-22
@@ -11,408 +11,288 @@ linkedin: "https://www.linkedin.com/pulse/stateful-serverless-crm-processing-hea
 
 *📚 This is Part 3 of my series "Azure Functions with Dynamics 365". New here? Start with* [*Part 1*](/posts/azure-functions-dynamics-365/01-beginner-tutorial/)*, or read the previous one:* [*Part 2: Surviving high-volume integrations*](/posts/azure-functions-dynamics-365/02-high-volume-integrations/)*.*
 
-*Updated November 2026: new sections on what breaks after go-live (Day 2) and on using AI.*
+*Updated November 2026: rewritten in simpler English, the code now makes every ledger posting safe to retry, and new sections on what breaks after go-live, using AI and a checklist.*
 
-Processing enterprise-scale batch workloads against Microsoft Dataverse exposes the architectural boundary between transactional business applications and distributed computing engines. When an enterprise platform must process hundreds of thousands of operational records within a fixed maintenance window, standard extension models fail.
+## The story
 
-This guide provides an end-to-end architectural blueprint for engineering high-scale, stateful, and fault-tolerant batch systems using Azure Durable Functions and the Durable Task Framework (DTFx) to orchestrate complex Dataverse transactions.
+LoanHub has 250,000 active loans. Every night at midnight (UTC), a batch job must:
 
-Consider a Tier-1 financial services system managing active consumer and commercial loan portfolios implemented on Microsoft Dataverse. Every day at 00:00 UTC, the core ledger engine processes the active loan portfolio:
+1. Read each loan's balance, interest rate and penalty rules.
+2. Work out today's interest and any late fee.
+3. Create a **ledger entry** for each loan.
+4. Update the loan with its new totals.
 
-- **Active Records:** 250,000 active loan agreements.
-- **Per-Record Operations:**
-- Retrieve active contract parameters (current principal balance, indexed interest rates, penalty rules, grace periods).
-- Compute daily accrued interest using fractional day-count conventions
-- Evaluate delinquent repayment schedules and calculate compound late penalties.
-- Create an immutable double-entry financial ledger transaction in Dataverse (fin_ledgerentry).
-- Update the parent loan account (fin_loanaccount) with accrued totals, roll-up balances, and timestamp metadata.
+Two rules can't be broken:
 
-&nbsp;
+- **It must finish by 4 AM**, before the banking systems pick up the data.
+- **Each loan must be charged exactly once.** If a server restarts halfway, no loan may get interest twice.
 
-- ***Service Level Agreement (SLA):***
-- Total batch execution must terminate within a strict ***4-hour maintenance window*** (00:00 UTC to 04:00 UTC) prior to regional banking integrations.
-- ***Core Non-Negotiable Constraint:*** ***Exactly-Once Processing.*** Under no condition may a network failure, machine restart, or runtime timeout cause an account to accrue double interest or generate duplicated ledger postings.
--  ***The Architecture of Failure: Why Standard CRM Patterns Collapse Under High-Volume Loads***
-- Before designing a highly scalable system, a Solution Architect must first deeply understand exactly how and why systems break. When processing massive datasets—such as recalculating 250,000 active loan records at midnight—relying on standard Microsoft Power Platform or Dynamics 365 extensibility points will result in catastrophic system failure.
-- Below is an engineering evaluation of why familiar primitives collapse at this scale.
+## Why the usual tools fail at this size
 
-![Article content](/images/azure-part3-1.webp)
+![Why common Dynamics 365 tools fail for a 250,000-record nightly batch](/images/azure-part3-1.webp)
 
-**1.** ***The Synchronous Plugin: The 120-Second Sandbox Kill-Switch***
+### 1. A synchronous plugin: the 2-minute limit
 
-Many developers attempt to trigger a synchronous plugin on a batch update or a custom action.
+Plugins run in a sandbox with a **2-minute limit**. A loop over thousands of loans hits it, the plugin is stopped, and because a synchronous plugin is part of the database transaction, all its work is rolled back. While that happens, other users can be blocked on the same rows.
 
-***How it fails*:** Dynamics 365 plugins execute within an isolated, resource-constrained sandbox worker process (Microsoft.Crm.Sandbox.WorkerProcess.exe). Microsoft enforces a non-negotiable **120-second timeout limit** to protect the shared multi-tenant SQL Server cluster from runaway queries.
+### 2. Asynchronous plugins or workflows: a flooded background queue
 
-***The Infrastructure Reality*:** If your loop processes record number 4,200 and hits the 120-second mark, the Sandbox Host aggressively terminates the thread.
+Starting 250,000 background jobs puts them all in the same queue Dynamics uses for its own work: emails, SLAs, cascade deletes, other plugins. That work waits behind your batch, and users notice everything getting slow.
 
-***The Collateral Damage*:** Because synchronous plugins run within the main database transaction, the SQL Server must roll back the entire execution. Rolling back 4,200 complex records causes massive database locking, blocking other users and external integrations from reading or writing to those tables while the rollback completes.
+### 3. Power Automate: request limits and throttling
 
-**2.** ***The Asynchronous Plugin: The AsyncOperationBase Black Hole***
+An "Apply to each" over 250,000 records with 4 actions inside is about **1 million actions**. That uses up your Power Platform request limits, and Dataverse starts answering **429 Too Many Requests** (one user can make about 6,000 requests in 5 minutes). A 3-hour job turns into days.
 
-Realizing synchronous plugins time out, developers often offload the workload to Asynchronous Plugins or classic Background Workflows, firing off 250,000 individual async jobs.
+### 4. A normal Azure Function: it forgets where it stopped
 
-- ***How it fails*:** Every async job generated in Dataverse is written to the physical SQL database in the *AsyncOperationBase* table.
-- ***The Infrastructure Reality*:** Dropping 250,000 jobs instantly into this table causes sudden, massive database bloat. The Dataverse Asynchronous Processing Service (which operates on a FIFO/priority queue) is suddenly overwhelmed.
-- ***The Collateral Damage (Queue Starvation*):** The Async Service doesn't just run your custom code; it is the heartbeat of the CRM. It processes SLAs, email sending, cascade deletes, and system jobs. By flooding the queue with a batch calculation, you cause *Queue Starvation*. Emails stop sending, SLAs miss their targets, and the entire CRM system degrades to a crawl for business users while the queue churns for the next 14 hours.
+A normal Function on the classic Consumption plan stops after **5 minutes by default, 10 at most**. Even on a bigger plan, servers restart for patches. And a normal Function keeps no memory: if it stops after 134,000 loans, you don't know safely where to restart. Start again from the top and the first 134,000 loans get charged twice. To avoid that, you'd have to build your own tracking tables, which is exactly what Durable Functions already does.
 
-**3.** ***Power Automate (Cloud Flows): API Exhaustion and 429 Throttling***
+## The design: fan-out, fan-in
 
-Power Automate is exceptional for business logic, but it is not an ETL (Extract, Transform, Load) or heavy-compute engine. Using an "Apply to each" loop for 250,000 records introduces severe API limitations.
+![Fan-out and fan-in with Durable Functions](/images/azure-part3-2.webp)
 
-- ***How it fails:*** Power Automate execution is strictly metered. Every action inside a loop counts against the tenant's Power Platform Request limits. If you have 4 actions inside a loop running 250,000 times, you immediately consume 1,000,000 API calls.
-- ***The Infrastructure Reality*:** You will violently hit the **Service Protection API Limits**. Dataverse allows a maximum of 6,000 requests per 5-minute window per user. Once breached, Dataverse responds with an HTTP 429 Too Many Requests error.
-- ***The Collateral Damage*:** The flow halts, goes into a forced suspension (Retry-After backoff), and what should be a 3-hour job stretches into a multi-day execution. Furthermore, massive loops in Power Automate consume immense workflow memory, often causing the flow execution to time out or crash silently after 30 days.
+Durable Functions splits the work and remembers progress for you. There are four parts:
 
-**4.** ***Stateless Azure Functions: The "Partial Commit" Nightmare***
+1. **Timer starter:** runs at midnight and starts one orchestration for that night.
+2. **Orchestrator:** gets the list of loan IDs, splits it into batches of 400, and starts one activity per batch.
+3. **Activities (workers):** each one handles one batch of 400 loans and writes the results to Dataverse.
+4. **Fan-in:** when every batch is done, the orchestrator adds up the results and writes one run summary to Dataverse.
 
-To avoid CRM limits entirely, the logical next step is writing a custom Azure Function (on a standard Consumption plan) to pull the records and process them externally.
+**Fan-out** means starting many batches in parallel. **Fan-in** means waiting for all of them and combining the results.
 
-- ***How it fails*:** Standard Azure Functions are **stateless**. They have a hard maximum execution time of 5 to 10 minutes. If you process records sequentially, the Azure fabric will forcefully terminate the host container at the timeout mark.
-- **The Infrastructure Reality:** Even if you upgrade to a Premium plan with unlimited execution time, you are at the mercy of the cloud. The underlying virtual machine might need a security patch, or the Azure Load Balancer might drop the connection after 230 seconds of idle network time. The server reboots, and the function dies instantly.
-- **The Collateral Damage:** Because the function is stateless, it has total amnesia. If it crashes after processing 134,000 out of 250,000 accounts, **how do you resume the job safely?** If you just restart the function, you will double-charge interest on the first 134,000 accounts, corrupting your financial ledger. To prevent this, you would have to engineer incredibly complex, custom tracking tables and checkpoint logic within Dataverse itself—essentially reinventing the wheel.
+## How Durable Functions remembers progress
 
-**3. High-Throughput Serverless Architecture: The Fan-Out / Fan-In Topology**
+![Event sourcing and replay](/images/azure-part3-3.webp)
 
-- To achieve high throughput, strict determinism, and complete resilience against compute drops, the workload is decoupled into a **Durable Functions Fan-Out / Fan-In** pattern.
+Durable Functions keeps a **history** of everything the orchestrator has done, in Azure Storage. This storage area is called a **task hub**.
 
-![Article content](/images/azure-part3-2.webp)
+Here is what happens step by step:
 
-***Component Roles Across the Lifecycle***
+1. The orchestrator runs from the top and reaches "start batch 1".
+2. It writes "batch 1 started" to the history, then **stops running**. You don't pay while it waits.
+3. The batch finishes and writes its result to the history.
+4. The orchestrator **starts again from the top**. When it reaches "start batch 1", it looks in the history, sees the result is already there, and uses it instead of running the batch again.
+5. It carries on to the next step.
 
-***The Timer Client*:** Triggers at 00:00 UTC and invokes DurableTaskClient.ScheduleNewOrchestrationInstanceAsync() (the isolated worker version of the old StartNewAsync), passing batch run parameters.
+So if the server restarts at loan 134,000, the orchestrator just replays its history and continues with the batches that aren't finished. No custom tracking tables needed.
 
-***The Orchestrator*:** Calls a metadata activity to query Dataverse and fetch the primary keys of all 250,000 eligible accounts.
+## The one rule: orchestrator code must give the same result every time
 
-1.  Splits the 250,000 IDs into 500 discrete chunks containing 500 records each.
-2.  Dispatches 500 parallel activity tasks via Task.WhenAll().
+![What breaks determinism](/images/azure-part3-4.webp)
 
-***The Activity Functions (Workers)*:**Each activity receives an isolated slice of 500 record IDs.
+Because the orchestrator re-runs from the top many times, its code must take the same path every time. So inside the orchestrator:
 
-1.  Executes business math in-memory.
-2.  Packages database updates into transactional payloads using the Dataverse SDK (ExecuteTransactionRequest or ExecuteMultipleRequest).
-3.  Returns a structured processing summary to the orchestrator.
-4.  ***The Aggregator (Fan-In)*:** The orchestrator resumes upon completion of all 500 activity tasks, aggregates execution metrics (total successes, throughput per minute, failed account arrays), and writes a consolidated run log into Dataverse.
+- **No `DateTime.UtcNow`.** It is different on every replay. Use `context.CurrentUtcDateTime`.
+- **No `Guid.NewGuid()`.** Use `context.NewGuid()`.
+- **No calls to Dataverse or other systems.** Put them in activities.
 
-***Under the Hood: The Durable Task Framework (DTFx) & Event Sourcing***
+## Keeping Dataverse safe while you fan out
 
-Durable Functions does not keep compute threads active in memory while waiting for sub-tasks to finish. Understanding this mechanism requires looking under the hood at the ***Durable Task Framework (DTFx)****.*
+Starting hundreds of batches at once can overwhelm Dataverse. Three things keep it safe:
 
-***The Task Hub***
+**1. Limit how many batches run at once**, in `host.json`:
 
-- The orchestration state is isolated within a logical boundary called a **Task Hub**. In standard deployments, the Task Hub consists of storage resources managed by the runtime:
-- ***Control Queues*:** Ordered queues used to deliver lifecycle messages to orchestrators.
-- ***Work-Item Queues*:** Queues dedicated to dispatching tasks to Activity Functions. When an orchestrator calls an activity, it drops an execution payload onto a work-item queue.
-- ***History Table*:** An Azure Table Storage instance storing the event-sourced log of every state transition that occurs inside the orchestration.
+```json
+{
+  "version": "2.0",
+  "extensions": {
+    "durableTask": {
+      "maxConcurrentActivityFunctions": 16
+    }
+  }
+}
+```
 
-**The Event Sourcing & Replay Engine**
+This is per Function app instance. Start low, watch for 429s, then raise it.
 
-Durable Functions implements the **Event Sourcing Pattern**. State is not persisted as a mutated object; rather, every lifecycle action is appended to an append-only log.
+**2. One shared ServiceClient.** Register it once as a singleton. Creating a new one in every activity uses up outbound connections.
 
-![Article content](/images/azure-part3-3.webp)
+**3. Batch the writes.** Send each batch's creates and updates in one `ExecuteMultipleRequest`. It accepts up to 1,000 requests, so 400 loans with 2 requests each (800) fits.
 
-**The Step-by-Step Replay Lifecycle**
+## Exactly once: make every posting safe to retry
 
-1.  **Invocation:** The orchestrator starts running code from line 1.
-2.  **Reaching an Await:** The orchestrator encounters an await for an Activity.
-3.  **Yield and Dehydration:** The framework checks its execution history. On first run, the activity has not completed. A record is written to the History table (TaskScheduled), and the orchestrator runtime flushes its state, **terminates the execution thread**, and yields compute resources. You pay nothing while the activity executes.
-4.  **Activity Completion:** The worker finishes and writes its result payload to storage. It puts an orchestration wake-up message onto the Control Queue.
-5.  **The Replay (Hydration):**
+Durable Functions can run an activity **more than once**: after a timeout, a restart, or a retry. If the activity creates ledger entries with a plain Create, a retry creates them again, and the loan is charged twice.
 
-- The orchestrator wakes up.
-- It starts executing again from Line 1 of the function code.
-- When it reaches the line calling the Activity, it consults the local history log.
-- The log indicates that the Activity has already executed and contains the cached result list.
-- The orchestrator skips re-executing the activity, instantly assigns the cached output to the variable, and proceeds to the next line of code.
+The fix is to give each ledger entry a **business key** that is the same on every retry, for example the loan ID plus the posting date, and to use **Upsert** instead of Create:
 
-**5. The Golden Constraint: Determinism in Orchestrators**
+- Add a text column `lh_postingkey` to the ledger entry table and make it an **alternate key**.
+- Fill it with `{loanId}-{yyyyMMdd}`.
+- Use `UpsertRequest`. On a retry, Dataverse finds the existing entry and updates it instead of creating a second one.
 
-Because the Orchestrator function reconstructs its state by re-running its code from the beginning during every single replay, **the code path must be 100% deterministic**. If re-executing the code on a different server at a different millisecond takes a different branch, the event-sourcing graph desynchronizes.
+## The code
 
-![Article content](/images/azure-part3-4.webp)
+This uses the **isolated worker model on .NET 10** and the Durable Functions isolated packages.
 
-- **System Time:** DateTime.UtcNow evaluates differently on every replay. context.CurrentUtcDateTime returns the timestamp recorded during the initial scheduling of that step.
-- **Random Identifiers:** Guid.NewGuid() generates a different ID during a replay, causing foreign key mismatches. context.NewGuid() generates a deterministic GUID based on the orchestration instance ID and execution step count.
-- **Direct I/O:** Network calls can fail or return different data on a replay. All Dataverse ServiceClient calls must be strictly isolated inside the Activity Functions.
-
-**6.** ***Enterprise Integration with Dataverse: Concurrency, Throttling & SDK Optimizations***
-
-- Fanning out hundreds of concurrent Activity Functions against a Microsoft Dataverse tenant requires fine-grained control to prevent crushing the Dataverse Web API.
-
-**1.** ***Dataverse Service Protection Limits & HTTP 429*:**To protect shared multi-tenant infrastructure, Dataverse enforces Service Protection Limits (e.g., maximum 6,000 requests per 5-minute window, max 52 concurrent execution requests per web-server tier). Exceeding these triggers an HTTP status code 429 (Too Many Requests).
-
-**2.** : To prevent the Fan-Out pattern from overwhelming Dataverse, global concurrency must be constrained inside the function app's configuration:
-
-![Article content](/images/azure-part3-5.webp)
-
-By locking maxConcurrentActivityFunctionEvaluations to 32, even if the orchestrator dispatches 500 tasks simultaneously, the runtime host will only lease and execute 32 activity work-items at any single instant.
-
-***3. Connection Pooling and SNAT Port Exhaustion***
-
-Creating a new ServiceClient instance inside every activity invocation will rapidly exhaust the underlying Azure App Service worker's outbound SNAT ports.
-
-- ***Architecture Requirement*:** The Dataverse ServiceClient must be registered as a **Singleton** using standard Azure Functions Dependency Injection. This manages connection pooling across all concurrent Activity Function runs, eliminating socket leaks.
-
-**7*. Production-Grade Implementation (C#)***
-
-Below is a complete, enterprise-grade implementation demonstrating deterministic orchestration, activity batching, native backoff retries, and transactional Dataverse operations using the isolated worker model.
-
-**1.** ***The Orchestrator Implementation***
+### Timer starter: one run per night, never two
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.DurableTask;
+using Microsoft.DurableTask.Client;
 using Microsoft.Extensions.Logging;
 
-namespace FinTech.Lms.Orchestrations
+public class NightlyStarter(ILogger<NightlyStarter> log)
 {
-    public static class LoanProcessingOrchestrator
+    [Function(nameof(NightlyStarter))]
+    public async Task Run(
+        [TimerTrigger("0 0 0 * * *")] TimerInfo timer,
+        [DurableClient] DurableTaskClient client)
     {
-        [Function(nameof(RunLoanPortfolioOrchestrator))]
-        public static async Task<BatchExecutionSummary> RunLoanPortfolioOrchestrator(
-            [OrchestrationTrigger] TaskOrchestrationContext context)
+        // Fixed ID per night, so a restart or a manual run can't start a second copy
+        string instanceId = $"loan-batch-{DateTime.UtcNow:yyyyMMdd}";
+
+        var existing = await client.GetInstanceAsync(instanceId);
+        if (existing is not null)
         {
-            ILogger logger = context.CreateReplaySafeLogger(nameof(LoanProcessingOrchestrator));
-            logger.LogInformation("Orchestration started. Execution ID: {instanceId}", context.InstanceId);
-
-            // Step 1: Query eligible loan IDs (Deterministic: All I/O offloaded to activity)
-            var eligibleLoanIds = await context.CallActivityAsync<List<Guid>>(
-                nameof(QueryEligibleLoanIdsActivity), 
-                null);
-
-            if (eligibleLoanIds == null || !eligibleLoanIds.Any())
-            {
-                logger.LogWarning("No eligible loan records found. Terminating orchestration.");
-                return new BatchExecutionSummary { TotalProcessed = 0, SuccessCount = 0, FailureCount = 0 };
-            }
-
-            // Step 2: Partition dataset into balanced chunks of 500 records
-            const int chunkSize = 500;
-            var chunks = eligibleLoanIds
-                .Select((id, index) => new { id, index })
-                .GroupBy(x => x.index / chunkSize)
-                .Select(g => g.Select(x => x.id).ToList())
-                .ToList();
-
-            // Configure resilient retry options for activities encountering Dataverse throttling
-            var activityRetryOptions = TaskOptions.FromRetryPolicy(new TaskRetryPolicy(
-                maxNumberOfAttempts: 5,
-                firstRetryInterval: TimeSpan.FromSeconds(5),
-                backoffCoefficient: 2.0,
-                maxRetryInterval: TimeSpan.FromMinutes(2)));
-
-            // Step 3: FAN-OUT. Dispatch parallel Activity tasks across workers
-            var processingTasks = new List<Task<ChunkResult>>();
-            for (int i = 0; i < chunks.Count; i++)
-            {
-                var payload = new ChunkProcessingRequest
-                {
-                    ChunkIndex = i + 1,
-                    TotalChunks = chunks.Count,
-                    LoanIds = chunks[i],
-                    // Generate deterministic timestamp through context, NEVER DateTime.UtcNow
-                    CalculationTimestamp = context.CurrentUtcDateTime
-                };
-
-                processingTasks.Add(context.CallActivityAsync<ChunkResult>(
-                    nameof(ProcessLoanChunkActivity), 
-                    payload, 
-                    activityRetryOptions));
-            }
-
-            // Step 4: FAN-IN. Await completion of all concurrent activities
-            ChunkResult[] results = await Task.WhenAll(processingTasks);
-
-            // Step 5: Aggregate results
-            var finalSummary = new BatchExecutionSummary
-            {
-                TotalProcessed = results.Sum(r => r.RecordsProcessed),
-                SuccessCount = results.Sum(r => r.SuccessCount),
-                FailureCount = results.Sum(r => r.FailedCount),
-                FailedRecordIds = results.SelectMany(r => r.FailedIds).ToList(),
-                CompletedAt = context.CurrentUtcDateTime
-            };
-
-            // Step 6: Persist audit log back into Dataverse via dedicated final activity
-            await context.CallActivityAsync(nameof(PersistBatchRunSummaryActivity), finalSummary);
-
-            return finalSummary;
+            log.LogWarning("Run {Id} already exists with status {Status}", instanceId, existing.RuntimeStatus);
+            return;
         }
-    }
 
-    public class ChunkProcessingRequest
-    {
-        public int ChunkIndex { get; set; }
-        public int TotalChunks { get; set; }
-        public List<Guid> LoanIds { get; set; }
-        public DateTime CalculationTimestamp { get; set; }
-    }
-
-    public class ChunkResult
-    {
-        public int RecordsProcessed { get; set; }
-        public int SuccessCount { get; set; }
-        public int FailedCount { get; set; }
-        public List<Guid> FailedIds { get; set; } = new();
-    }
-
-    public class BatchExecutionSummary
-    {
-        public int TotalProcessed { get; set; }
-        public int SuccessCount { get; set; }
-        public int FailureCount { get; set; }
-        public List<Guid> FailedRecordIds { get; set; } = new();
-        public DateTime CompletedAt { get; set; }
+        await client.ScheduleNewOrchestrationInstanceAsync(
+            nameof(LoanBatchOrchestrator.Run),
+            new StartOrchestrationOptions(instanceId));
     }
 }
 ```
 
-  
-
-**2. The Activity Worker Implementation**
+### The orchestrator
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.DurableTask;
+using Microsoft.Extensions.Logging;
+
+public static class LoanBatchOrchestrator
+{
+    [Function(nameof(Run))]
+    public static async Task<RunSummary> Run([OrchestrationTrigger] TaskOrchestrationContext context)
+    {
+        ILogger log = context.CreateReplaySafeLogger(nameof(LoanBatchOrchestrator));
+
+        // All reading from Dataverse happens in an activity
+        var loanIds = await context.CallActivityAsync<List<Guid>>(nameof(LoanActivities.GetActiveLoanIds));
+        if (loanIds.Count == 0) return new RunSummary();
+
+        // Batches of 400 loans
+        var batches = loanIds.Chunk(400).Select(b => b.ToList()).ToList();
+        DateTime postingDate = context.CurrentUtcDateTime.Date; // never DateTime.UtcNow here
+
+        var retry = TaskOptions.FromRetryPolicy(new RetryPolicy(
+            maxNumberOfAttempts: 5,
+            firstRetryInterval: TimeSpan.FromSeconds(10),
+            backoffCoefficient: 2.0,
+            maxRetryInterval: TimeSpan.FromMinutes(2)));
+
+        // Fan-out
+        var tasks = batches
+            .Select(b => context.CallActivityAsync<BatchResult>(
+                nameof(LoanActivities.ProcessBatch), new BatchRequest(b, postingDate), retry))
+            .ToList();
+
+        // Fan-in
+        BatchResult[] results = await Task.WhenAll(tasks);
+
+        var summary = new RunSummary
+        {
+            Processed = results.Sum(r => r.Processed),
+            Failed = results.Sum(r => r.Failed),
+            FailedLoanIds = results.SelectMany(r => r.FailedLoanIds).ToList(),
+            CompletedOn = context.CurrentUtcDateTime
+        };
+
+        await context.CallActivityAsync(nameof(LoanActivities.SaveRunSummary), summary);
+        log.LogInformation("Batch finished: {Processed} processed, {Failed} failed", summary.Processed, summary.Failed);
+        return summary;
+    }
+}
+
+public record BatchRequest(List<Guid> LoanIds, DateTime PostingDate);
+
+public class BatchResult
+{
+    public int Processed { get; set; }
+    public int Failed { get; set; }
+    public List<Guid> FailedLoanIds { get; set; } = new();
+}
+
+public class RunSummary
+{
+    public int Processed { get; set; }
+    public int Failed { get; set; }
+    public List<Guid> FailedLoanIds { get; set; } = new();
+    public DateTime CompletedOn { get; set; }
+}
+```
+
+### The activity: one batch, safe to retry
+
+```csharp
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 
-namespace FinTech.Lms.Orchestrations
+public class LoanActivities(ServiceClient dataverse, ILogger<LoanActivities> log)
 {
-    public class LoanActivities
+    [Function(nameof(ProcessBatch))]
+    public async Task<BatchResult> ProcessBatch([ActivityTrigger] BatchRequest request)
     {
-        private readonly ServiceClient _dataverseClient;
-        private readonly ILogger<LoanActivities> _logger;
-
-        // ServiceClient injected as Singleton via Dependency Injection
-        public LoanActivities(ServiceClient dataverseClient, ILogger<LoanActivities> logger)
+        var result = new BatchResult();
+        var batch = new ExecuteMultipleRequest
         {
-            _dataverseClient = dataverseClient ?? throw new ArgumentNullException(nameof(dataverseClient));
-            _logger = logger;
-        }
+            Requests = new OrganizationRequestCollection(),
+            Settings = new ExecuteMultipleSettings { ContinueOnError = true, ReturnResponses = true }
+        };
 
-        [Function(nameof(ProcessLoanChunkActivity))]
-        public async Task<ChunkResult> ProcessLoanChunkActivity(
-            [ActivityTrigger] ChunkProcessingRequest request)
+        foreach (Guid loanId in request.LoanIds)
         {
-            var result = new ChunkResult();
+            decimal interest = CalculateDailyInterest(loanId);
+            string postingKey = $"{loanId:N}-{request.PostingDate:yyyyMMdd}";
 
-            // Create batch execution request to minimize network roundtrips to Dataverse
-            var multipleRequest = new ExecuteMultipleRequest
+            // Upsert on an alternate key: a retry updates the same entry instead of adding a second one
+            var entry = new Entity("lh_ledgerentry", "lh_postingkey", postingKey)
             {
-                Requests = new OrganizationRequestCollection(),
-                Settings = new ExecuteMultipleSettings
-                {
-                    ContinueOnError = true,
-                    ReturnResponses = true
-                }
+                ["lh_loanaccountid"] = new EntityReference("lh_loanaccount", loanId),
+                ["lh_amount"] = new Money(interest),
+                ["lh_postingdate"] = request.PostingDate
             };
+            batch.Requests.Add(new UpsertRequest { Target = entry });
 
-            foreach (var loanId in request.LoanIds)
+            var loan = new Entity("lh_loanaccount", loanId)
             {
-                // In-memory calculations (interest, late fees, balances)
-                decimal dailyInterest = CalculateAccruedInterest(loanId);
-
-                // 1. Prepare Ledger Entry Entity
-                var ledgerEntry = new Entity("fin_ledgerentry")
-                {
-                    Attributes =
-                    {
-                        ["fin_loanaccountid"] = new EntityReference("fin_loanaccount", loanId),
-                        ["fin_amount"] = new Money(dailyInterest),
-                        ["fin_entrytype"] = new OptionSetValue(100000001), 
-                        ["fin_transactiondate"] = request.CalculationTimestamp
-                    }
-                };
-
-                // 2. Prepare Parent Account Update
-                var accountUpdate = new Entity("fin_loanaccount", loanId)
-                {
-                    Attributes =
-                    {
-                        ["fin_lastinterestaccrualdate"] = request.CalculationTimestamp,
-                        ["fin_accruedinterestbalance"] = new Money(dailyInterest) 
-                    }
-                };
-
-                multipleRequest.Requests.Add(new CreateRequest { Target = ledgerEntry });
-                multipleRequest.Requests.Add(new UpdateRequest { Target = accountUpdate });
-            }
-
-            // Execute batch against Dataverse Web API
-            var response = (ExecuteMultipleResponse)await _dataverseClient.ExecuteAsync(multipleRequest);
-
-            // Parse responses to collect individual operational failures
-            foreach (var responseItem in response.Responses)
-            {
-                if (responseItem.Fault != null)
-                {
-                    result.FailedCount++;
-                    _logger.LogError("Dataverse batch item fault: {message}", responseItem.Fault.Message);
-                }
-                else
-                {
-                    result.SuccessCount++;
-                }
-            }
-
-            result.RecordsProcessed = request.LoanIds.Count;
-            return result;
+                ["lh_lastaccrualdate"] = request.PostingDate
+            };
+            batch.Requests.Add(new UpdateRequest { Target = loan });
         }
 
-        private decimal CalculateAccruedInterest(Guid loanId)
+        var response = (ExecuteMultipleResponse)await dataverse.ExecuteAsync(batch);
+
+        foreach (var item in response.Responses.Where(r => r.Fault is not null))
         {
-            return 12.50m;
+            // Each loan adds 2 requests, so the loan's position is RequestIndex / 2
+            Guid failedLoan = request.LoanIds[item.RequestIndex / 2];
+            if (!result.FailedLoanIds.Contains(failedLoan)) result.FailedLoanIds.Add(failedLoan);
+            log.LogError("Loan {LoanId} failed: {Message}", failedLoan, item.Fault.Message);
         }
+
+        result.Failed = result.FailedLoanIds.Count;
+        result.Processed = request.LoanIds.Count;
+        return result;
     }
-} 
+
+    private static decimal CalculateDailyInterest(Guid loanId) => 12.50m; // your real calculation here
+}
 ```
 
-**8. Summary Comparison: Traditional Approaches vs. Durable Functions**
+The loan update sets the last accrual date rather than adding to a running total, so running it twice gives the same result. Keep running totals as a rollup or a calculation from the ledger entries, not as "old value plus today".
 
-To evaluate this architectural shift, review how the patterns behave under heavy enterprise load:
+## Comparing the options
 
-![Article content](/images/azure-part3-6.webp)
+![Comparing the options for a nightly batch](/images/azure-part3-6.webp)
 
-But what happens when you need to trigger this massive batch process not from a scheduled timer, but directly from a live Dataverse event without locking up the user interface? That requires fully decoupling the event producer from the compute engine entirely.
+What if the batch must start from a live Dataverse event instead of a timer, without making users wait? Then Dataverse and the compute need a queue between them. That is Part 4.
 
-...And that brings us to the edge of our next architectural deep dive.
-
-**💡 The Interview Spotlight (Core Questions & Hints)**
-
-If you are interviewing for a Solution Architect or Senior Developer role on enterprise Dynamics 365 projects, expect deep-dive questions like these:
-
-**Why would you choose Azure Durable Functions over a standard Azure Function or Power Automate for processing 250,000 Dataverse records?**
-
-💡 *Hint:* Discuss standard Function timeouts (5-10 minutes), Power Automate API exhaustion (throttling), and the need for stateful compute to prevent partial failures and corrupt data.
-
-**Explain the "Fan-Out / Fan-In" pattern in the context of a Dataverse integration.**
-
-💡 *Hint:* Talk about breaking the large dataset into chunks, using Task.WhenAll to spawn parallel Activity Functions (Fan-Out), and aggregating the results safely once all workers complete (Fan-In).
-
-**Why must an Orchestrator function be strictly deterministic, and what common C# methods violate this rule?**
-
-💡 *Hint:* Explain the Event Sourcing replay mechanism. Mention why DateTime.UtcNow, Guid.NewGuid(), and direct HttpClient calls will corrupt the execution history.
-
-**If you fan out 500 concurrent workers against Dataverse, how do you prevent an HTTP 429 (Service Protection Limit) meltdown?**
-
-💡 *Hint:* Mention concurrency throttling via maxConcurrentActivityFunctionEvaluations in host.json, and the absolute necessity of using a Singleton ServiceClient to avoid SNAT port exhaustion.
-
-**How does the Durable Task Framework remember where it left off if the underlying Azure server reboots midway through a 3-hour job?**
-
-💡 *Hint:* Discuss the Task Hub, checkpointing to Azure Table Storage (History Table), and how the Orchestrator safely rehydrates its state without custom CRM tracking tables.
-
-  
-
-### Day 2: what breaks after go-live
+## Day 2: what breaks after go-live
 
 These are the problems teams hit most often once a Durable Functions job is live, and how to fix each one.
 
@@ -444,7 +324,7 @@ It shows Running for hours. Usually one activity is waiting on a slow call or re
 Microsoft ended support for the in-process model and for .NET 8 on 10 November 2026. Durable code written with `IDurableOrchestrationContext` is in-process code.
 **How to fix it:** use the isolated worker model (`TaskOrchestrationContext`, `DurableTaskClient`) on .NET 10, as in the code above.
 
-### Using AI with this part
+## Using AI with this part
 
 **Good prompts:**
 
@@ -459,20 +339,44 @@ Microsoft ended support for the in-process model and for .NET 8 on 10 November 2
 - It suggests fan-out with no limit on concurrency.
 - Never paste real loan or customer data into an AI tool. Use test data from your developer environment.
 
-**Over to You: Share Your War Stories**
+## Interview questions
 
-Great architecture is usually born from the ashes of a spectacular production crash.
+**1. Why Durable Functions instead of a normal Function or Power Automate for 250,000 records?**
+A normal Function has a time limit and forgets its progress if it stops. Power Automate hits request limits and gets throttled. Durable Functions saves its progress and carries on after a restart.
 
-Let's debate this in the trenches before the next architectural breakdown drops:
+**2. Explain fan-out and fan-in.**
+Split the records into batches, start an activity per batch in parallel (fan-out), then wait for all of them and combine the results (fan-in).
 
-- Have you ever accidentally caused queue starvation in Dataverse by firing off too many asynchronous workflows or plugins during a bulk update?
-- How are you currently handling massive batch operations, end-of-month calculations, or heavy data migrations in your CRM?
+**3. Why must orchestrator code be deterministic, and what breaks it?**
+The orchestrator replays from the top using its history, so it must take the same path every time. `DateTime.UtcNow`, `Guid.NewGuid()` and direct calls to other systems break this.
 
-Drop your thoughts in the comments below! 👇 Hit 🔔 on my profile so you don't miss the next part.
+**4. How do you stop 500 parallel batches from overwhelming Dataverse?**
+Limit concurrent activities with `maxConcurrentActivityFunctions` in `host.json`, use one shared ServiceClient, batch writes with ExecuteMultiple, and use retry policies with growing delays.
 
-\#Dynamics365 \#PowerPlatform \#AzureFunctions \#Dataverse \#SolutionArchitecture \#CSharp \#MicrosoftAzure#Dynamics365 \#PowerPlatform \#AzureFunctions \#Dataverse \#SolutionArchitecture \#CSharp \#MicrosoftAzure \#CloudArchitecture \#SoftwareEngineering \#CloudComputing \#EnterpriseArchitecture \#BackendDevelopment \#DotNet \#SystemDesign \#ApiIntegration \#CloudIntegration
+**5. How does Durable Functions know where it stopped after a server restart?**
+It keeps a history of every step in its task hub in Azure Storage, and replays it to rebuild its state.
 
-Next in the series: [Part 4, getting events out of Dataverse: webhooks vs Service Bus](/posts/azure-functions-dynamics-365/04-webhooks-vs-service-bus/).
+**6. An activity was retried. How do you make sure no loan is charged twice?**
+Give each posting a business key (loan plus date) as an alternate key and use Upsert, and set values instead of adding to them.
+
+## Checklist
+
+- [ ] Fixed instance ID per run, checked before starting
+- [ ] No `DateTime.UtcNow`, `Guid.NewGuid()` or I/O inside the orchestrator
+- [ ] Batches sized under the ExecuteMultiple limit of 1,000 requests
+- [ ] `maxConcurrentActivityFunctions` set and tested for 429s
+- [ ] One singleton ServiceClient
+- [ ] Every write safe to retry (alternate key and Upsert, set values instead of adding)
+- [ ] Retry policy with a maximum number of attempts
+- [ ] Own task hub name per environment
+- [ ] History purged on a schedule
+- [ ] Run summary written to Dataverse, with the failed loan IDs
+
+## Simple rule to remember
+
+**Durable Functions remembers where it stopped. Your code must make sure doing a step twice changes nothing.**
+
+Next in the series: [Part 4, webhooks vs Service Bus for Dataverse events](/posts/azure-functions-dynamics-365/04-webhooks-vs-service-bus/).
 
 **📚 The full series: Azure Functions with Dynamics 365**
 
