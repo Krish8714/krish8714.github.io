@@ -39,15 +39,17 @@ Why a staging layer? Because you never load straight from source into CRM. You n
 1. What to migrate, and what to leave behind
 2. Mapping legacy data to Dataverse: fields, option sets, lookups, users and teams (including users who've left)
 3. Cleaning and de-duplicating data before it reaches Dataverse
-4. Load order: why Accounts go before Contacts, and the circular lookup trap
-5. Keeping history: created dates, owners, closed records and notes
-6. Documents and attachments: SharePoint, Dataverse or Blob storage
-7. Tools: KingswaySoft vs ADF vs SSIS vs Configuration Migration Tool
-8. Performance: throttling (429), batching, parallel loads
-9. Reconciliation: proving every record landed
-10. Mock migrations and testing: dry runs, timing the load, sign-off
-11. Masking personal data (PAN, bank details) for test environments
-12. Cutover weekend: full load, delta loads, freeze window, rollback plan, and running both systems side by side
+4. C# inside SSIS: when the built-in tasks aren't enough (Script Task and Script Component)
+5. Load order: why Accounts go before Contacts, and the circular lookup trap
+6. Keeping history: created dates, owners, closed records and notes
+7. Documents and attachments: SharePoint, Dataverse or Blob storage
+8. Tools: KingswaySoft vs ADF vs SSIS vs Configuration Migration Tool
+9. Huge volumes: running packages in parallel, throttling (429) and batching
+10. Reconciliation: proving every record landed
+11. Deploying migration packages from one environment to another: connections, parameters and secrets
+12. Mock migrations and testing: dry runs, timing the load, sign-off
+13. Masking personal data (PAN, bank details) for test environments
+14. Cutover weekend: full load, delta loads, freeze window, rollback plan, and running both systems side by side
 
 ## New to SQL, SSIS or ADF? Start with the beginner toolkit
 
@@ -55,7 +57,7 @@ The main parts assume you can read a SQL query and run a load. If you can't yet,
 
 - **SQL for CRM people:** SELECT, WHERE, GROUP BY, JOIN, finding duplicates and counting rows, using customers, loans and owners. Read it before Part 2.
 - **Your first SSIS package with KingswaySoft:** connect to Dataverse, load 100 contacts with an upsert on an alternate key, and read the error output. Read it before Part 4.
-- **Your first ADF pipeline into Dataverse:** linked service, copy activity, the Dataverse sink with an alternate key, and the monitoring screen. Read it before Part 7.
+- **Your first ADF pipeline into Dataverse:** linked service, copy activity, the Dataverse sink with an alternate key, and the monitoring screen. Read it before Part 8.
 
 Each one has real screenshots from my lab, explains every line, and breaks things on purpose so you learn to fix them.
 
