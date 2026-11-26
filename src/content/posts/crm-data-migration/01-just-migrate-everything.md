@@ -11,6 +11,8 @@ tags: [Data Migration, Dataverse, SQL Server, Scoping, Dynamics 365]
 
 *Part 1 of my series CRM Data Migration: From Legacy to Dataverse. One lending bank, one real migration, from the first meeting to the go-live weekend. We use SQL Server, SSIS, KingswaySoft and Azure Data Factory.*
 
+*New to SQL? The queries below are explained in plain words, and a beginner part, SQL for CRM people, is coming next in this series.*
+
 > **"Just move all the data" is not a plan. It means nobody has made a plan yet.**
 
 ## The story: 12 years of data and one sentence
