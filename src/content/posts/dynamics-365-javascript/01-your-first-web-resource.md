@@ -239,7 +239,7 @@ Below it are the **Event Name**, **Function Name** and **Web Resource Name**. Al
 1. DevTools > Sources > open `loanapplication.js`. Look at the code there: is it your new text?
 2. If not, the browser used a cached copy.
 
-**Fix it:** confirm the web resource was **published**, then hard refresh (Ctrl+F5). While developing, keep DevTools open with **Network > Disable cache** ticked.
+**Fix it:** confirm the web resource was **published**, then hard refresh (Ctrl+Shift+R). While developing, tick **Application > Service workers > Bypass for network** in DevTools. Model-driven apps serve files through a service worker, so the Network tab's **Disable cache** box on its own is not enough (Part 2 shows this in detail).
 
 **It's not only the file that gets cached.** The **form definition** is cached too: the list of libraries and handlers, and settings such as "Pass execution context". When I tested this series, a fixed and published handler kept failing with the old function name after a normal refresh. A hard refresh (Ctrl+Shift+R) picked up the change straight away.
 
@@ -388,7 +388,7 @@ request. Then rewrite it with a namespace and executionContext.
 - [ ] **The file:** is the web resource published? Does Sources show your latest code?
 - [ ] **The library:** is it on **this** form (the one the user actually gets)?
 - [ ] **The handler:** right event, function name copied exactly (with namespace), **Enabled** and **Pass execution context** ticked, form published?
-- [ ] **The browser:** hard refresh (Ctrl+Shift+R) after every upload or form change, or Disable cache ticked?
+- [ ] **The browser:** hard refresh (Ctrl+Shift+R) after every upload or form change, or **Bypass for network** ticked under Application > Service workers?
 - [ ] **The code:** a breakpoint on the first line is hit? Any red errors in the Console?
 
 ## Interview questions, with the answers that land
