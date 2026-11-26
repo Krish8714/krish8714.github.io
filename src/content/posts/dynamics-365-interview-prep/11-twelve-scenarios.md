@@ -151,6 +151,32 @@ tags: [Interview Preparation, Scenarios, Dataverse, Security, Plugins]
 - Monitor failed runs in flow analytics or the admin center.
 - Send alerts to a Teams channel, or raise a support ticket automatically.
 
+## How to practise with AI
+
+Scenarios are where AI is most useful as a sparring partner, because you can make it argue back.
+
+```text
+You are a senior Dynamics 365 interviewer. Give me one production
+scenario (data model, security, form logic or server logic) where the
+obvious answer is wrong. Don't give the answer. Let me explain how I'd
+investigate and fix it, then push back on anything vague: ask what I'd
+check first, who the code runs as, and what can be rolled back.
+```
+
+**Where AI gets it wrong:**
+
+- It jumps to code. Most of these 12 are fixed by configuration (a relationship behaviour, a role, a setting). If AI's first answer is a plugin, ask "can this be solved without code?"
+- It gets defaults and codes wrong: rollup schedules, save mode numbers, what happens on a business unit change. Check them against Microsoft Learn.
+- It forgets the person: who reported it, who runs the code, who needs access. Interviewers listen for exactly that.
+
+## Before your interview: Level 3 checklist
+
+- [ ] For each of the 12, I can say why it happens in one sentence.
+- [ ] I can explain the difference between a security role granting access and "denying" it.
+- [ ] I know which fixes are configuration and which need code.
+- [ ] I can explain what a synchronous plugin can and can't roll back.
+- [ ] I have one real scenario of my own, told with how I found it.
+
 ## The pattern behind all 12
 
 Every one of these is answered by the same four questions:

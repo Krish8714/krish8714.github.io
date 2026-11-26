@@ -64,6 +64,13 @@ This series prepares you for that, level by level.
 - **The follow-up** you should expect next, so you're never surprised.
 - **The trap**: the answer that sounds right and loses the offer.
 
+Two parts use a different shape, because the round itself is different:
+
+- **The scenarios (Level 3)** give you a problem, not a question. Each one shows how to think, why it happens, and the fix.
+- **The project round (Level 4)** groups questions into the chains interviewers follow, with what each chain is checking and how to answer.
+
+Every part ends with a way to **practise with AI** and a short **before-your-interview checklist**.
+
 The examples use the same lending bank as my Real-World Series, so if you've read those articles, every scenario will feel familiar.
 
 ## How to use it

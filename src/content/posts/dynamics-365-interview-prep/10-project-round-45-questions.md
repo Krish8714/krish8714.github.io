@@ -148,6 +148,33 @@ Every chain below draws on this card.
 3. Add a number to every answer: users, records, minutes, percentages.
 4. Never claim something you can't explain two levels deeper. The chain will find it.
 
+## How to practise with AI
+
+AI can play the interviewer who keeps digging, which is exactly what this round is.
+
+```text
+You are interviewing me about my real Dynamics 365 project. Start with
+"Walk me through your current project." After each answer, ask the
+next question based only on what I said, going one level deeper each
+time (architecture, then failure handling, then monitoring). If I say
+"we", ask what I did personally. Stop after 8 questions and tell me
+where my answers lost detail or numbers.
+```
+
+**Where AI gets it wrong:**
+
+- It accepts vague answers. Tell it to push back on anything without a number or a reason.
+- It doesn't know your project, so it can't catch you claiming something you didn't do. Only you can keep the answers honest.
+- **Never paste client names, data or internal documents into an AI tool.** Describe the project in your own words, with made-up names.
+
+## Before your interview: Level 4 checklist
+
+- [ ] My project card is on one page: business, numbers, my role, one incident.
+- [ ] I can draw the architecture and name every integration's pattern and failure behaviour.
+- [ ] I have one modelling decision I'm proud of and one I'd change.
+- [ ] I can explain how a change reaches production, and how we recover from a bad release.
+- [ ] I've recorded myself answering all 9 chains and listened back for "we".
+
 ## Rule of thumb for Level 4
 
 **Theory gets you to the project round. Being able to explain why you built it that way gets you through it.**

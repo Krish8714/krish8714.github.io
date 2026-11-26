@@ -47,6 +47,8 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 
 **Answer:** Currency for the amount, Whole number for tenure in months, Choice for status, Lookup for the customer, Yes/No for "KYC verified". Picking the right type lets you validate, filter, report and secure the data.
 
+**Trap:** storing the amount or the tenure in a Text column "to be flexible". You lose validation, sorting, totals and charts, and fixing it later means a new column plus a data migration.
+
 ### 6. Choice vs lookup: when do you use each?
 
 **Answer:** A **choice** for a short, stable list that admins rarely change (Status: Draft, Submitted, Approved). A **lookup** to a table when the list grows, needs its own fields, or business users must maintain it (Branch, Loan Product).
@@ -69,7 +71,9 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 
 ### 9. What is an autonumber column?
 
-**Answer:** A text column Dataverse fills automatically with a pattern, such as `LN-{SEQNUM:6}` → LN-000101. Users never type it, and it's unique per environment.
+**Answer:** A text column Dataverse fills automatically with a pattern, such as `LN-{SEQNUM:6}` → LN-000101. Users never type it.
+
+**Trap:** "Autonumber guarantees uniqueness." It doesn't. Someone with access can overwrite the value, and a wrong seed after a migration repeats numbers. If the number must be unique, add an alternate key on it too.
 
 **Follow-up:** "After migration, new loans start at LN-000001 again. Why?" The seed wasn't set above the migrated numbers.
 
@@ -97,11 +101,15 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 
 **Answer:** The primary key is the GUID (`new_loanapplicationid`) that identifies the row. The primary column is the text that names the row in lookups and views (Loan Number).
 
+**Follow-up:** "Can two loans have the same primary column value?" Yes. The primary column isn't unique. Only the GUID is, plus any alternate key you add.
+
 ## Solutions
 
 ### 14. What's a solution?
 
 **Answer:** A package of customisations (tables, forms, flows, plugins, web resources) that moves between environments together.
+
+**Follow-up:** "Why not build in the Default solution?" Changes there have no meaningful publisher prefix and can't be packaged cleanly. Always work in your own solution from day one.
 
 ### 15. Managed vs unmanaged solutions?
 
@@ -112,6 +120,8 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 ### 16. What is a publisher, and why does the prefix matter?
 
 **Answer:** The publisher owns the solution's components, and its prefix (`new_`, `lh_`) is added to every schema name. A meaningful prefix tells you who built a column and avoids clashes between vendors.
+
+**Trap:** using the default `new_` or `cr123_` prefix. Two teams (or a vendor) end up with clashing names, and the prefix can't be changed on columns that already exist.
 
 ### 17. What is solution layering?
 
@@ -125,6 +135,8 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 
 **Answer:** For small one-off loads, Excel/CSV import. For anything repeatable or large: dataflows, Azure Data Factory, SSIS with KingswaySoft, or the Web API. Use alternate keys for upserts.
 
+**Follow-up:** "How do you load loans that point to customers?" Load parents first (Contacts), then children (Loans), and set the lookup through the customer's alternate key, so you never need the GUID.
+
 ### 19. What is auditing in Dataverse?
 
 **Answer:** It records who changed what and when, per column. It must be turned on for the environment, the table and the columns you care about.
@@ -135,29 +147,64 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 
 **Answer:** Rules that warn users when a new or updated record matches an existing one (same PAN, same mobile). Rules must be published, and they check matches; they don't merge anything.
 
-**Trap:** relying on duplicate detection to keep integrations clean. API calls can bypass the warning; use alternate keys for system-to-system loads.
+**Trap:** relying on duplicate detection to keep integrations clean. For API calls it's off by default, so integrations create duplicates without any warning. Use alternate keys for system-to-system loads.
 
 ### 21. What are business rules, and where do they run?
 
 **Answer:** No-code logic: show/hide, make required, set values, validate. With scope set to a form, they run only in that form; with **Entity** (table) scope, they also run on the server.
 
+**Follow-up:** "Then why do we still write JavaScript?" Business rules can't call APIs, open dialogs, filter lookups or handle complex logic. Use them for simple form rules, and JavaScript or plugins beyond that.
+
 ### 22. What's the difference between delete and deactivate?
 
 **Answer:** Deactivate sets the status to Inactive; the record stays for history and reporting. Delete removes it, along with any children the relationship behaviour cascades to.
+
+**Trap:** giving users Delete "because they asked for it". Most businesses want Deactivate. Keep Delete for admins, and turn on the recycle bin if your environment supports it.
 
 ### 23. What limits do people forget about?
 
 **Answer:** API request limits and service protection limits for integrations, storage capacity (database, file, log), and the two-minute timeout for synchronous plugins.
 
+**Follow-up:** "What happens when an integration hits service protection limits?" Dataverse returns 429 with a Retry-After header. The integration must wait that long and retry, not hammer the API.
+
 ### 24. What is the Dataverse Web API?
 
 **Answer:** An OData REST API for Dataverse: create, read, update, delete, query, and call actions and functions. JavaScript, Power Automate, Azure Functions and external systems all use it.
+
+**Follow-up:** "How does an external system authenticate?" An app registration in Microsoft Entra ID, plus an application user in Dataverse with a security role. No shared user passwords.
 
 ### 25. Model a loan system for me in 60 seconds.
 
 **Answer:** Contact for applicants, a custom Loan Application table (user-owned) with lookups to Contact and Loan Product, Branch as a table not a choice, a Loan Document table for KYC files, an alternate key on the legacy loan ID, and status columns that separate "what stage are we in" from "did the automated scoring succeed".
 
 **Follow-up:** "Who can see a loan?" That's the next Level 1 topic: security.
+
+## How to practise with AI
+
+AI makes a good mock interviewer, because it never runs out of follow-ups. Use it to practise, not to learn the answers.
+
+```text
+You are interviewing me for a Dynamics 365 developer role. Ask me one
+Level 1 question about Dataverse (tables, columns, relationships, keys
+or solutions). Wait for my answer. Then ask a follow-up based on what
+I said, like a real interviewer. After three follow-ups, tell me what
+was weak in my answers and what a stronger answer would include.
+```
+
+**Where AI gets it wrong:**
+
+- It mixes up old and new names: "entities", "fields" and "CDS" instead of tables, columns and Dataverse. Interviewers notice.
+- It states limits and defaults with confidence, and some are out of date. Check numbers against Microsoft Learn before you repeat them.
+- It gives textbook answers with no "why". Ask it: "Now say it the way someone who built this would."
+
+## Before your interview: Level 1 checklist
+
+- [ ] I can explain Dataverse, environments and solutions in 30 seconds each.
+- [ ] I know when to use a choice and when to use a lookup, with one example of each.
+- [ ] I can explain Parental, Referential and Custom behaviour, and one thing that goes wrong with Parental.
+- [ ] I can explain alternate keys and upserts, and why a key fails to activate.
+- [ ] I know managed vs unmanaged, and why production is always managed.
+- [ ] I've practised the "model a loan system in 60 seconds" answer out loud.
 
 ## Rule of thumb for Level 1
 
