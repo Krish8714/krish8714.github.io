@@ -40,7 +40,7 @@ img { max-width: 100%; height: auto; }
 .nav a:hover, .nav a[aria-current="page"] { color: var(--ink); }
 
 /* hero */
-.hero { padding: 72px 0 48px; }
+.hero { padding-top: 72px; padding-bottom: 48px; }
 .hero h1 { font-size: clamp(32px, 5vw, 48px); line-height: 1.15; margin: 0 0 16px; letter-spacing: -0.02em; }
 .hero p { font-size: 19px; color: var(--ink-soft); max-width: 640px; margin: 0 0 20px; }
 .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; padding: 0; list-style: none; }
@@ -54,7 +54,7 @@ img { max-width: 100%; height: auto; }
 @media (prefers-color-scheme: dark) { .btn { color: #0f1513; } }
 
 /* sections */
-.section { padding: 32px 0 56px; }
+.section { padding-top: 32px; padding-bottom: 56px; }
 .section h2 { font-size: 24px; margin: 0 0 20px; letter-spacing: -0.01em; }
 .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0 0 6px; }
 
@@ -152,3 +152,24 @@ img { max-width: 100%; height: auto; }
 .tile strong { font-size: 18px; line-height: 1.35; }
 .tile-meta { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
 .tile-tag { font-size: 15px; color: var(--ink-soft); line-height: 1.5; }
+
+/* homepage cover background */
+.cover-bg { position: relative; isolation: isolate; }
+.cover-bg::before { content: ""; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1;
+  background:
+    radial-gradient(60% 80% at 85% 20%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 70%),
+    radial-gradient(40% 60% at 10% 90%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+    linear-gradient(color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px) 0 0 / 40px 40px;
+  mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+
+/* hero with photo */
+.has-photo { display: flex; align-items: center; justify-content: space-between; gap: 48px; }
+.hero-photo { width: 300px; height: 300px; border-radius: 50%; object-fit: cover; flex: none;
+  border: 4px solid var(--brand-soft); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+@media (max-width: 860px) { .has-photo { flex-direction: column-reverse; align-items: flex-start; gap: 24px; } .hero-photo { width: 140px; height: 140px; } }
+.cover-photo { position: relative; isolation: isolate; color: #f2f5f3; }
+.cover-photo::before { content: ""; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1;
+  background: linear-gradient(90deg, rgba(10,16,14,.92) 0%, rgba(10,16,14,.78) 45%, rgba(10,16,14,.35) 100%), url(/images/karthik-bg.jpg) right 20% center / cover no-repeat; }
+.cover-photo p, .cover-photo .eyebrow { color: #d6dfdb !important; }
+.cover-photo h1 { color: #fff; }

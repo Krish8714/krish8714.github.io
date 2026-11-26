@@ -5,18 +5,22 @@ import { getCollection } from 'astro:content';
 import { SERIES, url } from '../series';
 const posts = await getCollection('posts');
 const count = (s: string) => posts.filter(p => p.data.series === s).length;
+const V = import.meta.env.HERO_VARIANT || 'photo';
 const latest = [...posts].sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf() || b.data.part - a.data.part).slice(0, 3);
 ---
 <Base>
-  <section class="hero wrap">
+  <section class={`hero wrap ${V === 'bg' ? 'cover-bg' : V === 'photobg' ? 'cover-photo' : 'cover-bg has-photo'}`}>
+    <div class="hero-text">
     <p class="eyebrow">Dynamics 365 · Dataverse · Power Platform · Azure</p>
-    <h1>Production-grade Dynamics 365,<br/>explained from real projects.</h1>
+    <h1>Production-grade Dynamics 365,{V !== "photo" && <br/>} explained from real projects.</h1>
     <p>I'm Karthik, a Solution Architect with 8.5 years on Dynamics 365 and Power Platform. I write long-form guides that go past the demo: what breaks on day two, how to fix it, and how to explain it in an interview.</p>
     <ul class="badges"><li>PL-600 Solution Architect</li><li>PL-400 Developer</li><li>Azure Integration</li><li>Data Migration</li></ul>
     <div class="btn-row">
       <a class="btn" href="#series">Start reading</a>
       <a class="btn ghost" href={url('/mentoring/')}>1:1 mentoring</a>
     </div>
+    </div>
+    {V === 'photo' && <img class="hero-photo" src={url('/images/karthik.jpg')} alt="Karthik Ithakota" width="320" height="320" />}
   </section>
 
   <section class="section wrap" id="series">
