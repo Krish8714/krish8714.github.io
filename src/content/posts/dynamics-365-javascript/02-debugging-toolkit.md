@@ -122,11 +122,78 @@ LoanHub.LoanApplication = (function () {
 })();
 ```
 
-**What's new compared with Part 1:**
+### What's new compared with Part 1, line by line
 
-- `Xrm.WebApi.retrieveMultipleRecords` asks Dataverse for rows. It doesn't return the rows straight away; it returns a **promise**, and the rows arrive later in the first function inside `.then(...)`.
-- If the call fails, the **second** function in `.then(...)` runs, with an `error` object.
-- Every log message starts with `LoanHub:`. You'll see why in the Console lab.
+**1. Two small functions instead of one big `onLoad`.** `onLoad` now only gets `formContext` and calls `showPanBanner` and `showOtherOpenLoans`. Small functions are easier to read, and easier to debug: you can put a breakpoint in exactly the one that's wrong.
+
+**2. Reading a lookup column.**
+
+```javascript
+var customer = formContext.getAttribute("lh_customerid");
+var value = customer ? customer.getValue() : null;
+```
+
+- `customer ? ... : null` means: if the column is on the form, read it; if not, use null. It's the same null guard as Part 1, written in one line.
+- A lookup's `getValue()` doesn't return text. It returns an **array** of objects, like this:
+
+```javascript
+[{ id: "{054A24EC-B9E9-...}", name: "Kiran Rao (lab)", entityType: "lh_customerprofile" }]
+```
+
+- It's an array because some lookups (such as the "To" field on an email) can hold more than one record. For a normal lookup there's only one, so we read `value[0]`.
+- If the lookup is empty, `getValue()` returns **null**, so we stop with `return` before touching `value[0]`.
+
+**3. Removing the curly braces.**
+
+```javascript
+var customerId = value[0].id.replace(/[{}]/g, "");
+```
+
+- Form IDs come wrapped in curly braces: `{054A24EC-...}`. The Web API wants the plain GUID, without them.
+- `/[{}]/g` is a small pattern (a regular expression). `[{}]` means "a `{` or a `}`", and `g` means "every one of them, not just the first". `replace(..., "")` swaps each brace for nothing.
+- Forget this line and the Web API returns a **400** error. You'll see that in Lab 3.
+
+**4. Building the query.**
+
+```javascript
+var query = "?$select=lh_loannumber" +
+    "&$filter=_lh_customerid_value eq " + customerId +
+    " and statecode eq 0";
+```
+
+This is an OData query, the language the Dataverse Web API understands:
+
+| Part | Meaning |
+| --- | --- |
+| `$select=lh_loannumber` | Return only this column. Never fetch every column: it's slower and sends data you don't need. |
+| `$filter=` | Only return rows that match the condition that follows. |
+| `_lh_customerid_value eq <id>` | In the Web API, a lookup column is read as `_<logical name>_value`, and it holds the GUID of the related record. So this means "where the customer is this customer". |
+| `and statecode eq 0` | `statecode` is the record's status: 0 is Active, 1 is Inactive. So: only open (active) loans. |
+
+**5. Calling the Web API.**
+
+```javascript
+Xrm.WebApi.retrieveMultipleRecords("lh_loanapplication", query).then(
+    function (result) { /* success */ },
+    function (error) { /* failure */ });
+```
+
+- The first argument is the table's **logical name** (`lh_loanapplication`, singular), not the plural name you see in Web API URLs (`lh_loanapplications`).
+- The call goes to the server and takes time, so it doesn't return the rows straight away. It returns a **promise**: a promise that the answer will come later.
+- `.then(success, failure)` gives it two functions. When the answer arrives, Dataverse calls the **first** one with `result`. If the call fails, it calls the **second** one with `error`.
+- `result.entities` is the array of rows. `result.nextLink` is filled in only when there are more rows than one page holds (it's `undefined` here; Part 7 covers paging).
+- `error.message` is the readable error text. Our code only writes it to the Console. Day 2 explains why that's not enough in production.
+
+**6. A second notification, at a different level.**
+
+```javascript
+formContext.ui.setFormNotification("This customer has ...", "INFO", OPEN_LOANS_ID);
+```
+
+- The second argument is the level: **INFO** (grey with an "i"), **WARNING** (yellow) or **ERROR** (red). The PAN banner is a warning; "other open loans" is just information.
+- Each notification has its own unique ID (`OPEN_LOANS_ID`), so clearing one never clears the other. When there are two, the form collapses them into "You have 2 notifications. Select to view."
+
+**7. A prefix on every log message.** Every `console.warn` and `console.error` starts with `LoanHub:`. You'll see why in Lab 2.
 
 ## Lab 1: Breakpoints, Scope and Watch (Sources)
 
