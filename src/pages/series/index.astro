@@ -1,18 +1,25 @@
 ---
 import Base from '../../layouts/Base.astro';
+import PostCard from '../../components/PostCard.astro';
 import { getCollection } from 'astro:content';
 import { SERIES, url } from '../../series';
 const posts = await getCollection('posts');
+const bySeries = (s: string) => posts.filter(p => p.data.series === s).sort((a, b) => a.data.part - b.data.part);
 ---
 <Base title="Series" description="All article series by Karthik Ithakota.">
-  <div class="page wrap measure">
-    <h1>Series</h1>
+  <div class="page wrap">
+    <h1>All series</h1>
     {SERIES.map(s => (
-      <div class="series-banner">
-        <p class="eyebrow">{posts.filter(p => p.data.series === s.slug).length} of {s.plannedParts} parts</p>
-        <h2><a href={url(`/series/${s.slug}/`)}>{s.title}</a></h2>
-        <p>{s.description}</p>
-      </div>
+      <section class="section">
+        <p class="eyebrow">{bySeries(s.slug).length} of {s.plannedParts} parts</p>
+        <h2><a href={url(`/series/${s.slug}/`)} style="color:inherit;text-decoration:none">{s.title}</a></h2>
+        <p style="color:var(--ink-soft);max-width:720px">{s.description}</p>
+        <div class="grid">{bySeries(s.slug).slice(0, 3).map(p => <PostCard post={p} />)}</div>
+        <div class="btn-row" style="margin-top:16px">
+          {bySeries(s.slug)[0] && <a class="btn" href={url(`/posts/${bySeries(s.slug)[0].id}/`)}>Start from Part 1</a>}
+          <a class="btn ghost" href={url(`/series/${s.slug}/`)}>All {s.plannedParts} parts</a>
+        </div>
+      </section>
     ))}
   </div>
 </Base>

@@ -144,3 +144,11 @@ img { max-width: 100%; height: auto; }
   .pager { grid-template-columns: 1fr; }
   .pager .next { grid-column: 1; }
 }
+
+/* homepage series tiles */
+.tiles { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.tile { display: flex; flex-direction: column; gap: 6px; padding: 20px 22px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; color: inherit; transition: transform .15s ease, border-color .15s ease; }
+.tile:hover { transform: translateY(-2px); border-color: var(--brand); }
+.tile strong { font-size: 18px; line-height: 1.35; }
+.tile-meta { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.tile-tag { font-size: 15px; color: var(--ink-soft); line-height: 1.5; }
