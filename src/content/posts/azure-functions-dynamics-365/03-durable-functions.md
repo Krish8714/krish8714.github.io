@@ -11,6 +11,8 @@ linkedin: "https://www.linkedin.com/pulse/stateful-serverless-crm-processing-hea
 
 *📚 This is Part 3 of my series "Azure Functions with Dynamics 365". New here? Start with* [*Part 1*](/posts/azure-functions-dynamics-365/01-beginner-tutorial/)*, or read the previous one:* [*Part 2: Surviving high-volume integrations*](/posts/azure-functions-dynamics-365/02-high-volume-integrations/)*.*
 
+*Updated November 2026: new sections on what breaks after go-live (Day 2) and on using AI.*
+
 Processing enterprise-scale batch workloads against Microsoft Dataverse exposes the architectural boundary between transactional business applications and distributed computing engines. When an enterprise platform must process hundreds of thousands of operational records within a fixed maintenance window, standard extension models fail.
 
 This guide provides an end-to-end architectural blueprint for engineering high-scale, stateful, and fault-tolerant batch systems using Azure Durable Functions and the Durable Task Framework (DTFx) to orchestrate complex Dataverse transactions.
@@ -78,7 +80,7 @@ To avoid CRM limits entirely, the logical next step is writing a custom Azure Fu
 
 ***Component Roles Across the Lifecycle***
 
-***The Timer Client*:** Triggers at 00:00 UTC and invokes IDurableOrchestrationClient.StartNewAsync(), passing batch run parameters.
+***The Timer Client*:** Triggers at 00:00 UTC and invokes DurableTaskClient.ScheduleNewOrchestrationInstanceAsync() (the isolated worker version of the old StartNewAsync), passing batch run parameters.
 
 ***The Orchestrator*:** Calls a metadata activity to query Dataverse and fetch the primary keys of all 250,000 eligible accounts.
 
@@ -158,7 +160,6 @@ Below is a complete, enterprise-grade implementation demonstrating deterministic
 **1.** ***The Orchestrator Implementation***
 
 ```csharp
-C#
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -275,7 +276,6 @@ namespace FinTech.Lms.Orchestrations
 **2. The Activity Worker Implementation**
 
 ```csharp
-C#
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -411,6 +411,53 @@ If you are interviewing for a Solution Architect or Senior Developer role on ent
 💡 *Hint:* Discuss the Task Hub, checkpointing to Azure Table Storage (History Table), and how the Orchestrator safely rehydrates its state without custom CRM tracking tables.
 
   
+
+### Day 2: what breaks after go-live
+
+These are the problems teams hit most often once a Durable Functions job is live, and how to fix each one.
+
+**1. A code change breaks jobs that are already running.**
+You deploy a new version of the orchestrator while last night's job is still running. When it replays, the history no longer matches the code, and the job fails with a non-deterministic error.
+**How to fix it:** never change an orchestrator's steps in place while instances are running. Either wait until nothing is running, or deploy the change under a new orchestrator name and let the old one finish.
+
+**2. The job runs twice on the same night.**
+The timer fires again after a restart, or someone starts the job manually while it is already running. Two runs process the same 250,000 loans.
+**How to fix it:** start the orchestration with a fixed instance ID (for example `loan-batch-2026-11-26`). Before starting, check whether that instance is already running.
+
+**3. Test and production share one task hub.**
+Two Function apps use the same storage account and the same task hub name. They pick up each other's work.
+**How to fix it:** give every environment its own task hub name, and ideally its own storage.
+
+**4. Storage keeps growing.**
+Every run writes history. After months, the history tables are huge and slow.
+**How to fix it:** purge the history of completed and failed instances on a schedule, for example everything older than 30 days.
+
+**5. Fan-out causes 429s from Dataverse.**
+500 activities start at once and all call Dataverse together.
+**How to fix it:** limit concurrent activities in `host.json`, use batches of a few hundred records, and use one shared ServiceClient.
+
+**6. A job looks "stuck".**
+It shows Running for hours. Usually one activity is waiting on a slow call or retrying forever.
+**How to fix it:** give every activity a retry policy with a maximum number of attempts and a timeout. Check the instance status with the Durable Functions monitor, and terminate and rerun only the failed part.
+
+**7. The code is on an unsupported version.**
+Microsoft ended support for the in-process model and for .NET 8 on 10 November 2026. Durable code written with `IDurableOrchestrationContext` is in-process code.
+**How to fix it:** use the isolated worker model (`TaskOrchestrationContext`, `DurableTaskClient`) on .NET 10, as in the code above.
+
+### Using AI with this part
+
+**Good prompts:**
+
+- *"Here is my orchestrator [paste]. List every line that is not deterministic and explain why it breaks on replay."* AI is good at spotting `DateTime.Now`, `Guid.NewGuid()` and direct HTTP calls inside orchestrators.
+- *"Convert this in-process Durable Functions code to the isolated worker model on .NET 10."* It saves a lot of typing, but compile and test every line.
+- *"Design a purge schedule for Durable Functions history: what to keep, for how long, and the code to run it."*
+
+**Where AI gets it wrong:**
+
+- It mixes the old in-process API and the new isolated API in the same file.
+- It puts Dataverse calls directly in the orchestrator instead of in activities.
+- It suggests fan-out with no limit on concurrency.
+- Never paste real loan or customer data into an AI tool. Use test data from your developer environment.
 
 **Over to You: Share Your War Stories**
 

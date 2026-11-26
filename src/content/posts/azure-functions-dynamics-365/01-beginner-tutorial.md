@@ -1,240 +1,358 @@
 ---
 title: "Beginner Tutorial: Webhooks, Service Bus and Logic Apps"
-description: "Azure Functions is a serverless, event-driven compute service that runs your custom code in the cloud when triggered by events. You focus on writing the code you need, and Azure handles servers,…"
+description: "Three ways to run an Azure Function when something happens in Dynamics 365: a webhook, a Service Bus queue, or a Logic App. What each one is, when to use it, working C# code, and what breaks after go-live."
 series: azure-functions-dynamics-365
 part: 1
 pubDate: 2025-05-05
 cover: /covers/azure-part1.webp
-tags: [Azure Functions, Dataverse, Dynamics 365]
+tags: [Azure Functions, Dataverse, Dynamics 365, Webhooks, Service Bus, Logic Apps]
 linkedin: "https://www.linkedin.com/pulse/azure-functions-dynamics-365-crm-dataverse-beginner-krishna-karthik-dakdc/"
 ---
 
-*📚 This is Part 1 of my series "Azure Functions with Dynamics 365". In this beginner guide, I walk through real use cases for each way to trigger an Azure Function from Dynamics 365 (webhooks, Service Bus queues and Logic Apps), with C# code for each.*
+*📚 This is Part 1 of my series "Azure Functions with Dynamics 365". It starts from zero. If you have never connected Dynamics 365 to Azure before, start here.*
 
-## Azure Functions with Dynamics 365 CRM (Dataverse): Beginner Tutorial
+*Updated November 2026: the code now uses the isolated worker model and .NET 10, and the article has new sections on what breaks after go-live, using AI, and interview questions.*
 
-Azure Functions is a **serverless, event-driven** compute service that runs your custom code in the cloud when triggered by events. You focus on writing the code you need, and Azure handles servers, scaling, and infrastructure. For example, imagine Azure Functions as a programmable sensor or smart switch: it stays idle until an event (like an HTTP call or a message) “flips the switch,” then your C# code runs on demand. Azure Functions supports many built-in triggers (HTTP, timers, queues, etc.) to connect with other services.
+## The story
 
-In a Dynamics CRM context, you could use Azure Functions whenever a CRM event needs extra processing. For instance, when a new Contact is created in CRM, a webhook or workflow step could call an Azure Function that sends a welcome email. Or when a record is updated, an Azure Function might log changes or call an external API. In each case, Azure Functions lets you write just the business logic in C# without managing a server or plugin, scaling up only when these events happen.
+LoanHub is a small lending company. Its loan officers work in Dynamics 365.
 
-### 2. Using Webhooks
+When an officer saves a new loan application, three things must happen outside Dynamics:
 
-Dynamics 365 supports **webhooks** – a simple HTTP callback mechanism – to connect CRM events with external services. Starting in Dynamics 365 v9, you can configure a webhook so that when a CRM event occurs, CRM makes an HTTP POST (with JSON data) to the external URL. In practice, you register your Azure Function’s URL as a service endpoint in the Plugin Registration tool, and attach it to an entity event (e.g. Create of Contact). CRM will then invoke your function when that event happens. The webhook POST contains the record data in JSON, which your function can parse (as noted, “Webhooks send POST requests with JSON payload and can be consumed by any programming language”).
+1. The customer gets a welcome email.
+2. The loan is sent to a credit bureau for a score.
+3. The finance team's system gets a copy when the loan is approved.
 
-### When a new Contact is created (Send Welcome Email)
+None of this belongs inside Dynamics. The email service, the credit bureau and the finance system all live outside. So we need a small piece of code that runs **outside** Dynamics, **when** something happens **inside** Dynamics.
 
-**Concept:** Register a webhook on the Contact **Create** event. CRM will POST the new contact’s data to your Azure Function’s HTTP trigger. In the function, read the contact’s name and email and send a welcome message (e.g. via SendGrid or other email API). For simplicity below, the code just logs the email action.
+That is exactly what an Azure Function is for.
+
+## What is an Azure Function, in simple words?
+
+An Azure Function is a small piece of code that sleeps until something wakes it up. Then it runs, does one job, and goes back to sleep.
+
+Think of a doorbell. Nothing happens until someone presses it. When they do, the bell rings. You don't pay for a doorbell that is always ringing. You only care that it rings when someone presses it.
+
+- The thing that wakes the Function up is called a **trigger**. It can be a web request, a message in a queue, or a timer.
+- You don't manage servers. Azure starts the code when needed and adds more copies when there is a lot of work.
+- You write the code in C# (or other languages). This series uses C#.
+
+## Three ways Dynamics 365 can wake up a Function
+
+| Way | How it works | Good for | Watch out |
+| --- | --- | --- | --- |
+| **Webhook** | Dynamics calls the Function's web address directly when a record changes. | Fast, simple, one receiver. | If the Function is down, the call fails. |
+| **Service Bus queue** | Dynamics drops a message in a queue. The Function picks it up. | Reliable delivery, big volumes, slow systems. | One more Azure service to set up and watch. |
+| **Logic App (or Power Automate)** | A low-code workflow notices the change and calls the Function. | Teams that prefer drag-and-drop, extra steps like approvals. | Slower, and costs grow with volume. |
+
+![Three ways Dynamics 365 can trigger an Azure Function](/images/azure-part1-three-ways.png)
+
+The important point for beginners: **in the first two ways, no plugin code is needed.** You register them with the Plug-in Registration Tool, and Dynamics does the sending for you.
+
+## Before you start
+
+You need:
+
+- A Dynamics 365 or Power Apps **developer environment** (free). Never practise on a client or company environment.
+- An Azure subscription (a free trial is fine).
+- Visual Studio 2022 or VS Code with the Azure Functions tools.
+- The **Plug-in Registration Tool** (install it with `pac tool prt` from the Power Platform CLI).
+
+Create a new Azure Functions project and choose the **.NET isolated worker** model on **.NET 10**. Older tutorials, including the first version of this article, used the "in-process" model. Microsoft ended support for the in-process model on 10 November 2026, so don't start anything new on it.
+
+## The one thing every beginner gets wrong: what Dynamics actually sends
+
+When Dynamics calls your Function, it does **not** send a simple object like this:
+
+```json
+{ "fullname": "Ravi Kumar", "emailaddress1": "ravi@example.com" }
+```
+
+It sends the full **execution context**. This is the same information a plugin sees: which message ran (Create, Update), which table, which user, and a list called `InputParameters`. The record itself sits inside that list, under the key `Target`, and its columns are a list of key/value pairs.
+
+A shortened example:
+
+```json
+{
+  "MessageName": "Create",
+  "PrimaryEntityName": "lh_loanapplication",
+  "PrimaryEntityId": "7f1c...e21",
+  "Depth": 1,
+  "InputParameters": [
+    {
+      "key": "Target",
+      "value": {
+        "LogicalName": "lh_loanapplication",
+        "Attributes": [
+          { "key": "lh_name", "value": "LN-000101" },
+          { "key": "lh_amount", "value": { "Value": 500000 } },
+          { "key": "lh_email", "value": "ravi@example.com" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+So `data.fullname` will always be empty. You have to dig into `InputParameters` → `Target` → `Attributes`. The helper below does that once, so the rest of your code stays simple.
 
 ```csharp
-using System.IO;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using System.Text.Json.Nodes;
+
+public static class DataverseContext
+{
+    // Returns the Target record's columns as a simple dictionary.
+    public static Dictionary<string, JsonNode?> ReadTarget(string body)
+    {
+        var context = JsonNode.Parse(body)!;
+        var target = context["InputParameters"]!.AsArray()
+            .First(p => p!["key"]!.GetValue<string>() == "Target")!["value"]!;
+
+        return target["Attributes"]!.AsArray()
+            .ToDictionary(a => a!["key"]!.GetValue<string>(), a => a!["value"]);
+    }
+
+    public static string? Text(Dictionary<string, JsonNode?> row, string column) =>
+        row.TryGetValue(column, out var v) ? v?.ToString() : null;
+}
+```
+
+**Tip:** before you write any parsing code, look at a real payload. Point a test webhook at a free request-logging site, save a record, and copy the JSON you see. Then write your code against that, not against what you think Dynamics sends.
+
+## Way 1: Webhook
+
+### What it is
+
+A webhook is a web address that Dynamics calls when something happens. You tell Dynamics: "When a loan application is created, POST the details to this address."
+
+### Example: welcome email when a loan application is created
+
+**Step 1. Write the Function.**
+
+```csharp
+using System.Net;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
-public static class ContactCreatedFunction
+public class LoanCreatedWebhook(ILogger<LoanCreatedWebhook> log)
 {
-    [FunctionName("ContactCreatedFunction")]
-    public static async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
-        ILogger log)
+    [Function("LoanCreatedWebhook")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
     {
-        log.LogInformation("Webhook received: new Contact created.");
-        string json = await new StreamReader(req.Body).ReadToEndAsync();
-        dynamic data = JsonConvert.DeserializeObject(json);
-        string name = data?.fullname;
-        string email = data?.emailaddress1;
-        // (In a real function, call an email service here)
-        log.LogInformation($"Welcome email sent to {email} (Contact: {name}).");
-        return new OkResult();
+        string body = await new StreamReader(req.Body).ReadToEndAsync();
+        var loan = DataverseContext.ReadTarget(body);
+
+        string? number = DataverseContext.Text(loan, "lh_name");
+        string? email  = DataverseContext.Text(loan, "lh_email");
+
+        log.LogInformation("New loan {Number}, sending welcome email to {Email}", number, email);
+        // Call your email service here (for example Azure Communication Services).
+
+        return req.CreateResponse(HttpStatusCode.OK);
     }
-} 
+}
 ```
 
-### When an Account is updated (Log changes)
+`AuthorizationLevel.Function` means the caller must send a secret **function key**. Without it, the Function answers 401 and does nothing.
 
-**Concept:** Set up a webhook on the Account **Update** event. When an account changes, CRM sends the updated data to your function. The function reads key fields and logs them or forwards them to an external system. In the example below, we parse the account ID and name from the JSON payload and log it.
+**Step 2. Publish the Function to Azure** and copy two things from the portal: the Function URL (without the `?code=` part) and the function key.
 
-```csharp
-public static class AccountUpdatedFunction
-{
-    [FunctionName("AccountUpdatedFunction")]
-    public static IActionResult Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
-        ILogger log)
-    {
-        log.LogInformation("Webhook received: Account updated.");
-        string json = new StreamReader(req.Body).ReadToEnd();
-        dynamic data = JsonConvert.DeserializeObject(json);
-        string accountId = data?.accountid;
-        string accountName = data?.name;
-        log.LogInformation($"Account updated: ID={accountId}, Name={accountName}");
-        // (Additional code could post changes to an external API or database)
-        return new OkResult();
-    }
-} 
-```
+**Step 3. Register the webhook** in the Plug-in Registration Tool:
 
-### When a Lead is qualified (Notify Sales Manager)
+1. **Register → Register New Web Hook.**
+2. **Endpoint URL:** your Function URL.
+3. **Authentication:** choose **HttpHeader**, key `x-functions-key`, value = your function key.
 
-**Concept:** Use a webhook on the Lead **Qualify** message (or a field that indicates qualification). When a lead is qualified, CRM sends lead details to your function. The function might then notify the sales manager (e.g. by email or Microsoft Teams). In this code, we extract the lead’s name and a manager email from the JSON and log a notification.
+**Step 4. Register a step** on the webhook:
 
-```csharp
-public static class LeadQualifiedFunction
-{
-    [FunctionName("LeadQualifiedFunction")]
-    public static async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
-        ILogger log)
-    {
-        log.LogInformation("Webhook received: Lead qualified.");
-        string json = await new StreamReader(req.Body).ReadToEndAsync();
-        dynamic data = JsonConvert.DeserializeObject(json);
-        string leadName = data?.leadid?.Name;
-        string managerEmail = data?.manageremail; // assume field with manager email
-        // (In a real function, send an email or Teams message to the manager)
-        log.LogInformation($"Sales manager notified ({managerEmail}) that lead \"{leadName}\" was qualified.");
-        return new OkResult();
-    }
-} 
-```
+- **Message:** Create
+- **Primary entity:** `lh_loanapplication`
+- **Execution mode:** **Asynchronous**. The officer's save does not wait for the email.
 
-### 3. Using Service Bus Queues
+**Step 5. Test it.** Create a loan application. Open the Function's **Monitor** tab or Application Insights and look for your log line.
 
-For scenarios where you want **reliable queuing or batch processing**, Dynamics CRM can send messages to an Azure Service Bus queue instead of calling a webhook. You would typically use a custom plugin or workflow action in CRM that sends a Service Bus message. Then your Azure Function uses the ServiceBus trigger to process each message. As Microsoft notes, “Both webhooks and Azure Service Bus can be invoked from a plugin or custom workflow activity”. A ServiceBus-triggered function listens to a queue (or topic) and runs whenever a message arrives.
+### Two more webhook ideas
 
-### When a Case is closed (Send to Ticketing System)
+- **Loan amount changed → log it.** Register on **Update** and set **filtering attributes** to `lh_amount`, so the Function only wakes up when the amount changes, not on every save. Remember that an Update only sends the columns that changed. If you also need other columns, add a **post-image** to the step.
+- **Lead qualified → tell the sales manager.** Register on the **QualifyLead** message and send a Teams message from the Function.
 
-**Concept:** Register a plugin on the Case **Close** event to post a message to a Service Bus queue (e.g. “case-closed-queue”). An Azure Function with a ServiceBusTrigger picks up each case message. The function reads the case data (here simulated as a simple string message) and can then forward details to a ticketing or tracking system. Below, the function logs the case information from the queue.
+## Way 2: Service Bus queue
+
+### What it is
+
+A queue is a waiting line. Dynamics puts a message in the line. The Function takes messages out one by one. If the Function is down, the messages **wait safely in the queue** until it comes back.
+
+That is the big difference from a webhook. A webhook needs the Function to answer right now. A queue doesn't.
+
+### Example: send approved loans to the finance system
+
+The finance system is slow and goes down every night for maintenance. A webhook would fail during that time. A queue just holds the messages.
+
+**Step 1. Create a Service Bus namespace and a queue** called `loan-approved` in the Azure portal. Create a **Shared Access Policy** on the queue with **Send** rights only. Dynamics only needs to send.
+
+**Step 2. Register the Service Bus endpoint** in the Plug-in Registration Tool:
+
+1. **Register → Register New Service Endpoint.**
+2. Paste the connection string of the Send-only policy.
+3. **Designation type:** Queue. **Message format:** **JSON**, so the Function can read it easily.
+
+**Step 3. Register a step** on that endpoint: message **Update** on `lh_loanapplication`, filtering attribute `lh_status`, **Asynchronous**.
+
+No plugin is needed. Dynamics posts the execution context to the queue for you.
+
+**Step 4. Write the Function.**
 
 ```csharp
-using Microsoft.Azure.WebJobs;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
-public static class CaseClosedFunction
+public class LoanApprovedListener(ILogger<LoanApprovedListener> log)
 {
-    [FunctionName("CaseClosedFunction")]
-    public static void Run(
-        [ServiceBusTrigger("case-closed-queue", Connection = "ServiceBusConnection")] string message,
-        ILogger log)
+    [Function("LoanApprovedListener")]
+    public void Run(
+        [ServiceBusTrigger("loan-approved", Connection = "ServiceBusConnection")] string message)
     {
-        log.LogInformation($"Processing closed case message: {message}");
-        // (Code to integrate with a ticketing system could go here)
+        var loan = DataverseContext.ReadTarget(message);
+        log.LogInformation("Loan status changed: {Loan}", DataverseContext.Text(loan, "lh_name"));
+        // Check the status is Approved, then send the loan to the finance system.
     }
-} 
+}
 ```
 
-### When a Product is updated (Batch Processing)
+The `ServiceBusConnection` setting points to a **Listen-only** policy. The sender can only send, and the reader can only read.
 
-**Concept:** On the Product **Update** event, a CRM workflow could send a message to the “product-updates-queue”. An Azure Function triggers on this queue to handle updates in batch. For example, the function might add the product to a batch job or push it to another system. In the example below, we log the incoming product update message.
+If the finance system is down, throw an exception. Service Bus puts the message back and tries again later. After too many tries, it moves the message to a **dead-letter queue** so nothing is lost. Part 5 of this series covers this in detail.
+
+### More queue ideas
+
+- **Case closed → send to a ticketing system** that has rate limits.
+- **Customer deleted → archive** the record in Blob Storage for compliance before it disappears.
+
+## Way 3: Logic App (or Power Automate)
+
+### What it is
+
+A Logic App is a workflow you build by dragging boxes on a screen. The **Dataverse connector** has a trigger called **"When a row is added, modified or deleted"**. Add an **HTTP** action after it that calls your Function.
+
+Power Automate uses the same connector and works the same way. Choose Logic Apps when the IT or integration team owns the flow in Azure. Choose Power Automate when the Power Platform team owns it.
+
+### Example: loan disbursed → create the repayment schedule
+
+1. **Trigger:** When a row is modified, table **Loan Applications**, filter rows `lh_status eq 3` (Disbursed).
+2. **Action:** HTTP POST to your Function URL, header `x-functions-key`, body = the loan ID and amount.
+3. **Function:** builds the repayment schedule and writes it back to Dataverse.
+
+Here **you** choose the body. So the Function can read a simple JSON object, unlike webhooks and Service Bus.
 
 ```csharp
-public static class ProductUpdatedFunction
+public record DisbursedLoan(Guid LoanId, decimal Amount, int Months);
+
+public class CreateSchedule(ILogger<CreateSchedule> log)
 {
-    [FunctionName("ProductUpdatedFunction")]
-    public static async Task Run(
-        [ServiceBusTrigger("product-updates-queue", Connection = "ServiceBusConnection")] string message,
-        ILogger log)
+    [Function("CreateSchedule")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
     {
-        log.LogInformation($"Received product update: {message}");
-        // (For example, add message to a batch processing list or database)
+        var loan = await req.ReadFromJsonAsync<DisbursedLoan>();
+        log.LogInformation("Building {Months}-month schedule for loan {Id}", loan!.Months, loan.LoanId);
+        // Calculate EMIs and create schedule rows through the Dataverse Web API.
+        return req.CreateResponse(System.Net.HttpStatusCode.OK);
     }
-} 
+}
 ```
 
-### When a Contact is deleted (Archive Data)
+## Which one should I use?
 
-**Concept:** On Contact **Delete**, CRM can post a summary message to a “contact-deleted-queue”. The Azure Function triggered by this queue could archive the contact’s information (e.g. write to an archival data store). In this sample function, we simply log that the contact data is being archived.
+- **Does the user need to wait for the result?** Use a **synchronous webhook**, and keep the Function very fast. This is rare.
+- **Can the other system be slow or down?** Use **Service Bus**.
+- **Does a business team want to change the steps without a developer?** Use a **Logic App or Power Automate**.
+- **Not sure?** Start with an **asynchronous webhook**. It is the simplest, and you can move to Service Bus later.
 
-```csharp
-public static class ContactDeletedFunction
-{
-    [FunctionName("ContactDeletedFunction")]
-    public static void Run(
-        [ServiceBusTrigger("contact-deleted-queue", Connection = "ServiceBusConnection")] string message,
-        ILogger log)
-    {
-        log.LogInformation($"Archiving deleted contact info: {message}");
-        // (Archive logic would go here, such as storing the JSON in long-term storage)
-    }
-} 
-```
+## Day 2: what breaks after go-live
 
-### 4. Using Logic Apps with Azure Functions
+These are the problems people hit most often once this goes live, and how to fix each one.
 
-**Azure Logic Apps** is a visual, drag-and-drop workflow platform that can integrate Dynamics 365 (Dataverse) with Azure Functions. You build a Logic App workflow by adding triggers and actions on a canvas (no code needed). Using the Dataverse connector, you can trigger a workflow whenever CRM records change. Then in the workflow you add an **HTTP** action that calls your Azure Function’s endpoint. This way, CRM events handled by Logic Apps will invoke the Function. Below are some example flows.
+**1. The Function always gets empty values.**
+The code reads `data.fullname` or similar. Dynamics sends the execution context, not a flat record.
+**How to fix it:** read `InputParameters` → `Target` → `Attributes`, like the helper above. Test against a real captured payload.
 
-For each example, imagine a Logic App workflow that starts with a Dataverse trigger (e.g. "When a record is added/updated") and then uses an HTTP action to call the function.
+**2. On Update, most columns are missing.**
+An Update only sends the columns that changed. If the officer changed only the amount, the email column is not there.
+**How to fix it:** add a **post-image** to the step with the columns you need, or read the record from the Web API.
 
-### When an Opportunity is won (Trigger Reward Process)
+**3. Saving a record becomes slow, or fails with a timeout.**
+Someone registered the webhook as **synchronous**. Now every save waits for the Function. Dynamics gives a webhook 60 seconds to answer. A cold start plus a slow external API can go past that, and then the user's save fails.
+**How to fix it:** use **asynchronous** unless the user truly must wait. If it must be synchronous, keep the Function tiny and move slow work to a queue.
 
-**Concept:** Create a Logic App that triggers when an Opportunity record is updated to status “Won”. In the Logic App, add an HTTP action to call an Azure Function with the opportunity details. The function (below) processes the winning opportunity – for example, sending a reward or notification.
+**4. The Function runs again and again on the same record.**
+The Function updates the same loan, which fires the Update step again, which calls the Function again.
+**How to fix it:** set **filtering attributes** so the step ignores the columns the Function writes. Also check `Depth` in the context and stop if it is greater than 1.
 
-```csharp
-public static class OpportunityWonFunction
-{
-    [FunctionName("OpportunityWonFunction")]
-    public static async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
-        ILogger log)
-    {
-        log.LogInformation("Opportunity won event received.");
-        string json = await new StreamReader(req.Body).ReadToEndAsync();
-        dynamic data = JsonConvert.DeserializeObject(json);
-        string oppName = data?.opportunityname;
-        // (Perform reward process here)
-        log.LogInformation($"Processed rewards for opportunity: {oppName}");
-        return new OkResult();
-    }
-} 
-```
+**5. The Function returns 401 Unauthorized.**
+The function key is missing or was rotated in Azure but not updated in the webhook registration.
+**How to fix it:** use the **HttpHeader** option with `x-functions-key`. When you rotate keys, update the registration the same day. Part 6 shows how to move to managed identity so there are fewer secrets to rotate.
 
-### When an Invoice is created (Save PDF to Blob Storage)
+**6. Big records arrive cut short.**
+When the payload is over 256 KB, Dynamics trims it and sends the header `x-ms-dynamics-msg-size-exceeded`.
+**How to fix it:** check that header. If it is there, read the full record from the Web API using `PrimaryEntityId`.
 
-**Concept:** Set up a Logic App trigger on **Invoice** creation. The Logic App then calls an Azure Function with the invoice data. The function (below) could generate a PDF and save it to Azure Blob Storage. In this example, we simply log that an invoice was created.
+**7. Old code stops getting updates.**
+Functions built on the in-process model, or on .NET 8, are now out of support. Both ended on 10 November 2026.
+**How to fix it:** move to the isolated worker model on .NET 10. Microsoft has a migration guide, and most of the work is changing the attributes and the startup code.
 
-```csharp
-public static class InvoiceCreatedFunction
-{
-    [FunctionName("InvoiceCreatedFunction")]
-    public static async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
-        ILogger log)
-    {
-        log.LogInformation("Invoice created event received.");
-        // In a real function, parse req.Body, generate PDF, and upload to Blob Storage
-        return new OkResult();
-    }
-} 
-```
+## Using AI with this part
 
-### When Customer preferences are updated (Sync with Other System)
+AI is very useful here, but it makes the same mistakes beginners make.
 
-**Concept:** Use a Logic App that triggers on update of a **Customer Preferences** record. The app then calls an Azure Function with the updated preferences. The function code can parse the JSON and push the changes to another system or database. Below, we log that the preferences were updated.
+**Good prompts:**
 
-```csharp
-public static class CustomerPrefsSyncFunction
-{
-    [FunctionName("CustomerPrefsSyncFunction")]
-    public static async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
-        ILogger log)
-    {
-        log.LogInformation("Customer preferences updated event received.");
-        string json = await new StreamReader(req.Body).ReadToEndAsync();
-        dynamic data = JsonConvert.DeserializeObject(json);
-        // (Sync data with external system)
-        log.LogInformation("Customer preferences synchronized.");
-        return new OkResult();
-    }
-} 
-```
+- *"Here is a real Dataverse webhook payload [paste]. Write a C# isolated-worker Azure Function that reads lh_name and lh_email from the Target."* AI writes good parsing code when it can see a real payload.
+- *"Here is my Function's error log from Application Insights [paste]. What are the three most likely causes?"*
+- *"Create five test payloads for this Function: a normal create, an update with only one column, a missing email, a very long name, and a record over 256 KB."*
 
-Each of the above examples shows how an Azure Function (in C#) can tie into Dynamics CRM workflows via webhooks, queues, or Logic Apps. By wiring up triggers on CRM events to Azure Functions, you can extend CRM with custom logic (sending emails, updating other systems, etc.) without managing your own servers. The Concepts above give a high-level flow, and the C# code snippets show how simple the function code can be. This approach keeps the focus on real-world CRM scenarios while avoiding complex setup details.
+**Where AI gets it wrong:**
 
-**Sources:** Microsoft docs on Azure Functions and Dynamics CRM webhooks/Logic Apps.
+- It often assumes Dynamics sends a **flat JSON object**. It doesn't. Always give it a real payload.
+- It often writes **in-process** code (`[FunctionName]`, `Microsoft.Azure.WebJobs`). Ask for the isolated worker model on .NET 10.
+- It sometimes puts **keys and connection strings in the code**. Keys belong in app settings, and better still in Key Vault (Part 6).
+- Never paste real customer data or production connection strings into an AI tool. Use test data from your developer environment.
+
+## Interview questions
+
+**1. What are the ways to call an Azure Function from Dynamics 365 without writing a plugin?**
+A webhook, or a Service Bus endpoint, both registered with the Plug-in Registration Tool. You can also use a Logic App or Power Automate flow with an HTTP action.
+
+**2. What does a Dataverse webhook send in the request body?**
+The JSON form of the `RemoteExecutionContext`: message name, table, user, depth, and `InputParameters` with the `Target` record inside.
+
+**3. When would you choose Service Bus over a webhook?**
+When the receiving system can be slow or down, when volume is high, or when you can't lose a message. The queue holds messages until the Function can process them.
+
+**4. Should a webhook step be synchronous or asynchronous?**
+Asynchronous in most cases. A synchronous webhook makes the user wait, and if the Function fails or takes longer than 60 seconds, the user's save fails.
+
+**5. How do you secure a webhook call to an Azure Function?**
+Use a Function-level key sent in the `x-functions-key` header (HttpHeader authentication option). Store keys in Key Vault and rotate them, and don't put them in the URL.
+
+**6. Your Function updates the record that triggered it, and it keeps running. Why, and how do you fix it?**
+The update fires the same step again. Set filtering attributes so the step ignores the columns the Function writes, and check `Depth`.
+
+## Checklist
+
+- [ ] Isolated worker model, .NET 10
+- [ ] Parsing code tested against a real captured payload
+- [ ] Steps are asynchronous unless the user must wait
+- [ ] Filtering attributes set on every Update step
+- [ ] Post-image added when you need columns that didn't change
+- [ ] Function key sent in a header, not in the URL
+- [ ] Service Bus: Send-only policy for Dynamics, Listen-only policy for the Function
+- [ ] Logging in Application Insights, with the record ID in every log line
+
+## Simple rule to remember
+
+**Dynamics tells, Azure does.** Dynamics only says "this happened". The Function does the work. And if the work can fail, put a queue in the middle.
 
 Next in the series: [Part 2, surviving high-volume Dataverse integrations](/posts/azure-functions-dynamics-365/02-high-volume-integrations/).
 

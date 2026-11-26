@@ -11,6 +11,8 @@ linkedin: "https://www.linkedin.com/pulse/part-5-when-things-fail-retries-dead-l
 
 *📚 This is Part 5 of my series "Azure Functions with Dynamics 365". New here? Start with* [*Part 1*](/posts/azure-functions-dynamics-365/01-beginner-tutorial/)*, or read the previous one:* [*Part 4: Webhooks vs Service Bus for Dataverse events*](/posts/azure-functions-dynamics-365/04-webhooks-vs-service-bus/)*.*
 
+*Updated November 2026: new sections on what breaks after go-live (Day 2) and on using AI.*
+
 ## Why this part comes next
 
 In Part 4, Dataverse pushed every new loan application out to Azure, and our Function fetched the credit score from the bureau and wrote it back. The demo worked perfectly. Production is where things fail.
@@ -249,6 +251,49 @@ Where do failed webhook calls end up? In **Settings → System Jobs**, filtered 
 6.  **Nobody watching the dead-letter queue.** Messages expire or sit there for weeks. Alert on a count greater than 0.
 7.  **Returning 500 for poison data on a webhook.** Dataverse keeps retrying something that can never succeed.
 8.  **Dead-letter details only in Azure.** The people who can fix the data are business users. Show them the error in Dataverse.
+
+## Day 2: what breaks after go-live
+
+The common mistakes above happen while you build. These show up after a few months live.
+
+**1. A retry storm after an outage.**
+The bureau comes back after two hours. All 1,100 waiting messages retry at the same moment, the bureau rate-limits you, and many fail again.
+**How to fix it:** limit how many messages the Function handles at once, and spread retries out with a growing delay (for example, schedule the retry message 1, 2, 4 and 8 minutes later).
+
+**2. A deployment causes duplicates.**
+You deploy the Function while it is processing messages. The work finishes, but the message is never marked complete, so it comes back and runs again.
+**How to fix it:** idempotency, again. Every message must be safe to run twice. Deploy with slots outside busy hours.
+
+**3. People stop reading the alerts.**
+"Dead-letter count greater than 0" fires every night because of one bad PAN. After a week, nobody reads it, and then a real outage goes unnoticed.
+**How to fix it:** split the alerts. Bad data goes to the business users in Dataverse. Technical failures, like timeouts and outages, go to the support team.
+
+**4. Replaying dead letters brings back old problems.**
+Someone replays 900 dead-lettered messages without fixing the cause first, and they all fail again.
+**How to fix it:** fix the cause, replay a small batch first, check the result, then replay the rest.
+
+**5. The dead-letter queue becomes a storage room.**
+Messages sit there for months. Nobody knows whether they still matter.
+**How to fix it:** agree a rule with the business, for example "every dead letter is fixed or closed within 3 working days", and report on it every week.
+
+**6. The code is on an unsupported version.**
+Microsoft ended support for the in-process model and for .NET 8 on 10 November 2026.
+**How to fix it:** run on the isolated worker model with .NET 10.
+
+## Using AI with this part
+
+**Good prompts:**
+
+- *"Here are 20 dead-letter reasons from last week [paste, with customer data removed]. Group them into causes and tell me which are bad data and which are outages."* This turns a messy list into a short action plan.
+- *"Review this Service Bus Function [paste]. Will it create duplicates if it is retried? Where exactly?"*
+- *"Write a small C# tool that reads the dead-letter queue, shows the reason for each message, and resends only the ones I select."*
+
+**Where AI gets it wrong:**
+
+- It adds a retry loop inside the Function on top of the Service Bus retries, so attempts multiply.
+- It calls `AbandonMessageAsync` for every error, which uses up the retries in seconds.
+- It treats all errors the same, so bad data is retried as if it were an outage.
+- Never paste real loan or customer data into an AI tool. Remove names, PANs and amounts first.
 
 ## Interview questions
 

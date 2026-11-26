@@ -11,6 +11,8 @@ linkedin: "https://www.linkedin.com/pulse/part-4-getting-events-out-dataverse-we
 
 *📚 This is Part 4 of my series "Azure Functions with Dynamics 365". New here? Start with* [*Part 1*](/posts/azure-functions-dynamics-365/01-beginner-tutorial/)*, or read the previous one:* [*Part 3: Heavy Dataverse workloads with Durable Functions*](/posts/azure-functions-dynamics-365/03-durable-functions/)*.*
 
+*Updated November 2026: new sections on what breaks after go-live (Day 2) and on using AI.*
+
 ### Why this part comes next
 
 In Part 3, Durable Functions processed 250,000 Dataverse records without timing out. But every one of those designs starts with the same question: how does Azure even know that something changed in Dynamics 365?
@@ -43,6 +45,8 @@ Both options are built into Dataverse and registered with the same tool (the Plu
 - **Service Bus endpoint.** Dataverse posts the context as a message to an Azure Service Bus queue or topic. Your Azure Function reads from the queue at its own pace.
 
 A webhook is like a phone call: the other side must pick up now. A Service Bus endpoint is like a letterbox: the letter waits until someone collects it.
+
+![Webhook vs Service Bus when the Function is down](/images/azure-part4-down.png)
 
 ### What happens when a loan application is saved
 
@@ -241,6 +245,49 @@ Very large webhook payloads are trimmed, and a header tells you data was removed
 - **Power Automate** runs cloud flows. Best for low-code automation by makers. Watch out: it runs after the save, with licensing and throttling limits.
 
 **Rule of thumb:** a direct, simple call to your own code, use a webhook. The receiver might be down or the volume is high, use Service Bus.
+
+### Day 2: what breaks after go-live
+
+The common mistakes above happen while you build. These happen later, once the integration has been live for a while.
+
+**1. Failed webhook calls pile up and nobody notices.**
+An asynchronous webhook that fails just shows "Failed" in System Jobs. Users don't see an error, so nobody looks.
+**How to fix it:** create a view of failed system jobs for your webhook steps and check it every day. Better still, alert on failures from Application Insights on the Function side.
+
+**2. A copied environment sends test data to production.**
+Someone copies production to UAT. The webhook and Service Bus registrations are copied too, so they still point to the production Function and queue. Testers' fake loans reach the real credit bureau.
+**How to fix it:** straight after every copy, change the endpoint URLs and keys or turn off the steps, before anyone logs in. Put this first in the environment-copy checklist.
+
+**3. A deployment points UAT at the dev Function.**
+Webhook and Service Bus registrations travel inside the solution with their URL. After import, UAT calls the dev Function.
+**How to fix it:** update endpoint URLs and keys in every environment after import, as a fixed step in the release checklist.
+
+**4. Everything stops after a key is rotated.**
+The function key or the Service Bus key is changed in Azure, but the registration in Dataverse still has the old one. Every call fails with 401.
+**How to fix it:** keep a list of where each key is used, and update both places in the same change. Part 6 shows how to reduce the number of secrets.
+
+**5. Events arrive in the wrong order.**
+An Update arrives before the Create was processed, or two quick updates arrive the other way round. Background jobs and queues don't promise order.
+**How to fix it:** don't trust the message to be the latest state. Read the current record from Dataverse before acting, or use Service Bus sessions when order really matters.
+
+**6. The code is on an unsupported version.**
+Microsoft ended support for the in-process model and for .NET 8 on 10 November 2026.
+**How to fix it:** run the Functions on the isolated worker model with .NET 10.
+
+### Using AI with this part
+
+**Good prompts:**
+
+- *"Here is a real webhook payload from my developer environment [paste]. Write a C# helper that returns the Target columns, the message name and the record ID."*
+- *"Write an environment-copy checklist for a Dataverse environment that has webhooks and Service Bus endpoints."*
+- *"Compare webhook and Service Bus for this case: 2,000 loans a day, a credit bureau that is down every night from 1 to 3 AM. Which one, and why?"* Then check its answer against the four questions above.
+
+**Where AI gets it wrong:**
+
+- It assumes the webhook body is a flat record. It is the execution context.
+- It writes a plugin to send to Service Bus. You don't need one: register a Service Bus endpoint and a step.
+- It forgets filtering attributes, which leads to loops and too many calls.
+- Never paste real loan or customer data, or real keys, into an AI tool.
 
 ### Interview questions
 

@@ -11,6 +11,8 @@ linkedin: "https://www.linkedin.com/pulse/part-2-azure-functions-dynamics-365-da
 
 *📚 This is Part 2 of my series "Azure Functions with Dynamics 365". New here? Start with* [*Part 1: Beginner tutorial (webhooks, Service Bus, Logic Apps)*](/posts/azure-functions-dynamics-365/01-beginner-tutorial/)*.*
 
+*Updated November 2026: new sections on what breaks after go-live (Day 2) and on using AI.*
+
 Beginner tutorials teach you how to connect two systems. Enterprise architecture teaches you how to keep them from crashing.
 
 When building an enterprise Loan Management System in Dynamics 365, the architecture looks clean on paper: a user creates a loan application, Dataverse fires an asynchronous Webhook, an Azure Function catches the payload, calls a third-party Credit Bureau API, and writes the credit score back to CRM.
@@ -58,7 +60,7 @@ Routing this workload to an Azure Function keeps the CRM UI responsive and scale
 
 > **A Quick Warning:** Dataverse Webhooks will time out after **60 seconds**. This setup works great for fast APIs. But if your external credit check API takes longer than 45 seconds to respond, your function will break.
 
-When dealing with slow APIs, you need to decouple the system using **Azure Service Bus** (**which we will cover in Part 3!**).
+When dealing with slow APIs, you need to decouple the system using **Azure Service Bus** (**which we cover in Part 4!**).
 
 **The Production-Ready C# Code**
 
@@ -165,6 +167,53 @@ Even with your webhooks safely restricted to live transactions, a new enterprise
 1.  **How do you monitor and trace a failed integration end-to-end when a webhook payload travels from Dataverse, hits an Azure Function, and fails at a third-party API?**
 
 ***💡 Hint:*** *Leverage Application Insights, custom correlation IDs, structured logging, and Dataverse service protection logs.*
+
+### Day 2: what breaks after go-live
+
+These are the problems teams hit most often once a high-volume integration is live, and how to fix each one.
+
+**1. A bulk import fires the live integration 10,000 times.**
+Someone imports historical loans. Every row fires the webhook, and the credit bureau gets 10,000 real calls it should never have seen.
+**How to fix it:** before any bulk load, turn off the step, or add a column such as "Imported" and make the step skip those rows. Put this in the import checklist so nobody has to remember it.
+
+**2. Other background jobs slow down after a big import.**
+Every asynchronous webhook call is a system job. 10,000 imports mean 10,000 extra jobs in the same background queue that workflows and other plugins use.
+**How to fix it:** set filtering attributes so only real changes fire, and load big data in smaller batches outside business hours.
+
+**3. Dataverse answers 429 Too Many Requests.**
+Azure scales the Function out to many copies, and together they call Dataverse faster than the service protection limits allow.
+**How to fix it:** read the `Retry-After` header and wait that long (the Dataverse ServiceClient does this for you). Also limit how many copies run at once, for example with Service Bus concurrency settings or a maximum instance count on the Function app.
+
+**4. The Function starts failing with socket errors under load.**
+The code creates a new `HttpClient` for every call. Under load, the machine runs out of outbound connections.
+**How to fix it:** create one `HttpClient` and reuse it (`static readonly` or `IHttpClientFactory`). Do the same with the Dataverse ServiceClient.
+
+**5. The same loan is processed twice.**
+A timeout makes the caller retry, but the first call actually finished.
+**How to fix it:** make the Function safe to run twice. Check whether the work is already done (for example, the score already exists) before doing it again. Part 5 covers this in detail.
+
+**6. The Application Insights bill jumps.**
+At high volume, every log line costs money.
+**How to fix it:** turn on sampling, log one line per record instead of ten, and never log full payloads with customer data.
+
+**7. The code is on an unsupported version.**
+Microsoft ended support for the in-process model and for .NET 8 on 10 November 2026.
+**How to fix it:** run on the isolated worker model with .NET 10.
+
+### Using AI with this part
+
+**Good prompts:**
+
+- *"Write a KQL query for Application Insights that shows 429 responses from Dataverse per minute over the last 24 hours."* AI is very good at KQL, and this is the first query you need on a bad day.
+- *"Here is my Function code [paste]. Find anything that will break under 10,000 calls an hour: new clients per call, missing retries, blocking calls, logging of personal data."*
+- *"Generate a load-test plan for this webhook: 100, 1,000 and 10,000 records, what to measure, and when to stop the test."*
+
+**Where AI gets it wrong:**
+
+- It often suggests `Parallel.ForEach` with no limit. That is exactly how you hit 429s.
+- It writes retry loops that wait a fixed time and ignore `Retry-After`.
+- It creates a new `HttpClient` inside the method.
+- Never paste real loan or customer data into an AI tool. Use test data from your developer environment.
 
 ### Over to You: Share Your War Stories
 
