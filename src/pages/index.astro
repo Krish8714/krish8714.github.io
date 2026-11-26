@@ -12,15 +12,21 @@ const bySeries = (s: string) => posts.filter(p => p.data.series === s).sort((a, 
     <h1>Production-grade Dynamics 365,<br/>explained from real projects.</h1>
     <p>I'm Karthik, a Solution Architect with 8.5 years on Dynamics 365 and Power Platform. I write long-form guides that go past the demo: what breaks on day two, how to fix it, and how to explain it in an interview.</p>
     <ul class="badges"><li>PL-600 Solution Architect</li><li>PL-400 Developer</li><li>Azure Integration</li><li>Data Migration</li></ul>
-    <a class="btn" href={url('/series/dataverse-plugins/')}>Start the Plugins series</a>
-    <a class="btn ghost" href={url('/mentoring/')}>1:1 mentoring</a>
+    <p class="btn-label">Pick a series to start:</p>
+    <div class="btn-row">
+      {SERIES.map(s => <a class="btn" href={url(`/series/${s.slug}/`)}>{s.short}</a>)}
+      <a class="btn ghost" href={url('/mentoring/')}>1:1 mentoring</a>
+    </div>
   </section>
   {SERIES.map(s => (
     <section class="section wrap">
       <p class="eyebrow">Series · {bySeries(s.slug).length} of {s.plannedParts} parts</p>
       <h2><a href={url(`/series/${s.slug}/`)} style="color:inherit;text-decoration:none">{s.title}</a></h2>
       <div class="grid">{bySeries(s.slug).slice(0, 6).map(p => <PostCard post={p} />)}</div>
-      <p style="margin-top:20px"><a href={url(`/series/${s.slug}/`)}>All {s.plannedParts} parts →</a></p>
+      <div class="btn-row" style="margin-top:20px">
+        {bySeries(s.slug)[0] && <a class="btn" href={url(`/posts/${bySeries(s.slug)[0].id}/`)}>Start from Part 1</a>}
+        <a class="btn ghost" href={url(`/series/${s.slug}/`)}>All {s.plannedParts} parts</a>
+      </div>
     </section>
   ))}
 </Base>

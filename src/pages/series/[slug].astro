@@ -13,12 +13,17 @@ const byPart = new Map(posts.map(p => [p.data.part, p]));
     <h1>{s.title}</h1>
     <p style="font-size:19px;color:var(--ink-soft)">{s.description}</p>
     <blockquote style="border-left:4px solid var(--accent);padding-left:16px;margin:24px 0">{s.tagline}</blockquote>
+    <div class="btn-row">
+      {posts[0] && <a class="btn" href={url(`/posts/${posts[0].id}/`)}>Start from Part 1</a>}
+      <a class="btn ghost" href={url('/mentoring/')}>Book 1:1 help</a>
+      <a class="btn ghost" href={url('/')}>All series</a>
+    </div>
     <ol class="parts">
       {Array.from({ length: s.plannedParts }, (_, i) => i + 1).map(n => {
         const p = byPart.get(n);
         return <li>{p
           ? <a href={url(`/posts/${p.id}/`)}><span class="num">{p.data.label ?? `Part ${n}`}</span><span>{p.data.title}</span></a>
-          : <span class="soon"><span class="num">Part {n - (s.introOffset ?? 0)}</span><span>Coming soon</span></span>}</li>;
+          : <span class="soon"><span class="num">{s.outline ? s.outline[n - 1].split(':')[0] : `Part ${n - (s.introOffset ?? 0)}`}</span><span>{s.outline ? `${s.outline[n - 1].split(': ').slice(1).join(': ')} (coming soon)` : 'Coming soon'}</span></span>}</li>;
       })}
     </ol>
   </div>

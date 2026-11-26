@@ -2,14 +2,14 @@
 title: "12 Dynamics 365 Scenarios That Catch People Out"
 description: "Data model, security, form logic and server logic: 12 interview scenarios where the obvious answer is wrong. How to think about each one, why it happens, and the fix. Free revision deck included."
 series: dynamics-365-interview-prep
-part: 12
-label: "Level 5 · Part 11"
+part: 11
+label: "Level 3 · Senior"
 pubDate: 2026-11-24
-cover: /covers/ip-level5.png
+cover: /covers/ip-level3.png
 tags: [Interview Preparation, Scenarios, Dataverse, Security, Plugins]
 ---
 
-*Level 5 of Dynamics 365 Interview Prep: From Basics to Architect. These are the questions where the first answer that comes to mind is wrong. Try each one before you read the fix.*
+*Level 3 (Senior) of Dynamics 365 Interview Prep: From Basics to Architect. These are the questions where the first answer that comes to mind is wrong. Try each one before you read the fix.*
 
 **Download the revision deck (PDF, 14 slides):** [12 Dynamics 365 scenarios](/downloads/dynamics365-12-scenarios.pdf)
 

@@ -3,13 +3,13 @@ title: "Level 1: Dataverse and the Data Model, 25 Interview Questions"
 description: "Tables, columns, relationships, keys, solutions and the questions that follow them. 25 fundamentals questions with short answers, the follow-up to expect, and the trap to avoid."
 series: dynamics-365-interview-prep
 part: 2
-label: "Level 1 · Part 1"
+label: "Level 1 · Fundamentals"
 pubDate: 2026-11-24
 cover: /covers/ip-level1.png
 tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platform]
 ---
 
-*Level 1, Part 1 of Dynamics 365 Interview Prep: From Basics to Architect. Every answer is short enough to say out loud. Read the follow-up before you move on: that's the question that actually decides the round.*
+*Level 1 of Dynamics 365 Interview Prep: From Basics to Architect. Every answer is short enough to say out loud. Read the follow-up before you move on: that's the question that actually decides the round.*
 
 ## Dataverse basics
 
@@ -59,7 +59,7 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 - **Calculated / formula:** computed from other columns on the same row (or a parent), when the row is read.
 - **Rollup:** aggregates child rows (sum of payments on a loan). Rollups are recalculated by a system job on a schedule, not instantly.
 
-**Follow-up:** "A user saves a payment and the total doesn't change. Why?" Rollup timing. See Level 5, scenario 2.
+**Follow-up:** "A user saves a payment and the total doesn't change. Why?" Rollup timing. See Level 3, scenario 2.
 
 ### 8. What's the difference between the display name, the schema name and the logical name?
 
@@ -79,19 +79,19 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 
 **Answer:** 1:N: one customer has many loans (a lookup on Loan). N:1 is the same relationship seen from the Loan side. N:N: many loans to many collateral items, using a hidden intersect table.
 
-**Follow-up:** "We need a 'role' on the link between Loan and Contact." Then it isn't a native N:N; create a custom link table. See Level 5, scenario 4.
+**Follow-up:** "We need a 'role' on the link between Loan and Contact." Then it isn't a native N:N; create a custom link table. See Level 3, scenario 4.
 
 ### 11. What do relationship behaviours control?
 
 **Answer:** What happens to child records when something happens to the parent: assign, share, unshare, reparent, delete, merge. **Parental** cascades everything; **Referential** cascades nothing (and can restrict delete); **Custom** lets you choose per action.
 
-**Trap:** leaving a relationship Parental by default, then discovering that reassigning a customer moved 40 open loans. See Level 5, scenario 3.
+**Trap:** leaving a relationship Parental by default, then discovering that reassigning a customer moved 40 open loans. See Level 3, scenario 3.
 
 ### 12. What is an alternate key, and why do integrations need one?
 
 **Answer:** A unique key made of one or more columns other than the GUID, such as the legacy loan ID. Integrations and migrations use it to **upsert**: create the row if it's new, update it if it exists, without knowing the GUID.
 
-**Follow-up:** "The key never activates. Why?" Existing duplicates. See Level 5, scenario 1.
+**Follow-up:** "The key never activates. Why?" Existing duplicates. See Level 3, scenario 1.
 
 ### 13. What's the difference between the primary column and the primary key?
 
@@ -157,7 +157,7 @@ tags: [Interview Preparation, Dataverse, Data Model, Dynamics 365, Power Platfor
 
 **Answer:** Contact for applicants, a custom Loan Application table (user-owned) with lookups to Contact and Loan Product, Branch as a table not a choice, a Loan Document table for KYC files, an alternate key on the legacy loan ID, and status columns that separate "what stage are we in" from "did the automated scoring succeed".
 
-**Follow-up:** "Who can see a loan?" That's Level 1, Part 2: security.
+**Follow-up:** "Who can see a loan?" That's the next Level 1 topic: security.
 
 ## Rule of thumb for Level 1
 

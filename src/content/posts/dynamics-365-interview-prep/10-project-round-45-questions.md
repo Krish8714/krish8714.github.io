@@ -2,8 +2,8 @@
 title: "The Project Round: 45 Questions in the Chains Interviewers Actually Follow"
 description: "Project questions don't come as a list. Each one is built on your last answer. 45 project-round questions for Dynamics 365 and Power Platform roles, grouped into 9 chains, with what each chain is really checking."
 series: dynamics-365-interview-prep
-part: 11
-label: "Level 4 · Part 10"
+part: 12
+label: "Level 4 · Project round"
 pubDate: 2026-11-24
 cover: /covers/ip-level4.png
 tags: [Interview Preparation, Project Round, Dynamics 365, Power Platform, Career]

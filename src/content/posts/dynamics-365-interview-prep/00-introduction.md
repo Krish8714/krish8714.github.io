@@ -48,12 +48,12 @@ This series prepares you for that, level by level.
 7. Integration and the Web API
 8. ALM: solutions, environments and pipelines
 9. Data migration
+10. 12 Dynamics 365 scenarios that catch people out
 
 **Level 4: The project round**
-10. 45 project questions, in the chains interviewers actually follow
+11. 45 project questions, in the chains interviewers actually follow
 
 **Level 5: Extreme**
-11. 12 Dynamics 365 scenarios that catch people out
 12. Architect design scenarios: volume, compliance, global users, AI agents
 13. A full mock interview, from "tell me about yourself" to the offer conversation
 
@@ -72,4 +72,4 @@ The examples use the same lending bank as my Real-World Series, so if you've rea
 2. **Add your own numbers.** Users, records, response times, hours saved. Numbers make an answer believable.
 3. **Never claim what you can't explain two levels deeper.** The follow-up questions will find it.
 
-Start with Level 1, Part 1: **Dataverse and the data model**.
+Start with Level 1: **Dataverse and the data model**.

@@ -46,12 +46,17 @@ const ld = {
       {prev && <a class="prev" href={url(`/posts/${prev.id}/`)}><small>← {lab(prev)}</small>{prev.data.title}</a>}
       {next && <a class="next" href={url(`/posts/${next.id}/`)}><small>{lab(next)} →</small>{next.data.title}</a>}
     </nav>
+    <div class="btn-row post-actions">
+      {next && <a class="btn" href={url(`/posts/${next.id}/`)}>Next: {lab(next)} →</a>}
+      <a class="btn ghost" href={url(`/series/${series.slug}/`)}>All parts of this series</a>
+      <a class="btn ghost" href={url('/mentoring/')}>Book 1:1 help</a>
+      <a class="btn ghost" href={site.linkedin}>Follow on LinkedIn</a>
+    </div>
     <aside class="author-box">
       <div class="avatar">KI</div>
       <div>
         <strong>{site.name}</strong>
         <p>Dynamics 365 &amp; Power Platform Solution Architect (PL-600, PL-400). I write production-grade guides from real CRM projects, and mentor developers preparing for senior roles.</p>
-        <a href={site.linkedin}>Follow on LinkedIn</a> · <a href={url('/mentoring/')}>Book a 1:1 session</a> · <a href={url(`/series/${series.slug}/`)}>All parts of this series</a>
       </div>
     </aside>
   </article>
