@@ -37,21 +37,25 @@ Why a staging layer? Because you never load straight from source into CRM. You n
 ## The series
 
 1. What to migrate, and what to leave behind
-2. Mapping legacy data to Dataverse: fields, option sets, lookups, users who've left
-3. Load order: why Accounts go before Contacts, and the circular lookup trap
-4. Keeping history: created dates, owners, closed records, notes and emails
-5. Tools: KingswaySoft vs ADF vs SSIS vs Configuration Migration Tool
-6. Performance: throttling (429), batching, parallel loads
-7. Reconciliation: proving every record landed
-8. Cutover weekend: full load, delta loads, freeze window, rollback plan
+2. Mapping legacy data to Dataverse: fields, option sets, lookups, users and teams (including users who've left)
+3. Cleaning and de-duplicating data before it reaches Dataverse
+4. Load order: why Accounts go before Contacts, and the circular lookup trap
+5. Keeping history: created dates, owners, closed records and notes
+6. Documents and attachments: SharePoint, Dataverse or Blob storage
+7. Tools: KingswaySoft vs ADF vs SSIS vs Configuration Migration Tool
+8. Performance: throttling (429), batching, parallel loads
+9. Reconciliation: proving every record landed
+10. Mock migrations and testing: dry runs, timing the load, sign-off
+11. Masking personal data (PAN, bank details) for test environments
+12. Cutover weekend: full load, delta loads, freeze window, rollback plan, and running both systems side by side
 
 ## New to SQL, SSIS or ADF? Start with the beginner toolkit
 
 The main parts assume you can read a SQL query and run a load. If you can't yet, three beginner parts take you from zero to ready, using the same lending bank's data:
 
 - **SQL for CRM people:** SELECT, WHERE, GROUP BY, JOIN, finding duplicates and counting rows, using customers, loans and owners. Read it before Part 2.
-- **Your first SSIS package with KingswaySoft:** connect to Dataverse, load 100 contacts with an upsert on an alternate key, and read the error output. Read it before Part 3.
-- **Your first ADF pipeline into Dataverse:** linked service, copy activity, the Dataverse sink with an alternate key, and the monitoring screen. Read it before Part 5.
+- **Your first SSIS package with KingswaySoft:** connect to Dataverse, load 100 contacts with an upsert on an alternate key, and read the error output. Read it before Part 4.
+- **Your first ADF pipeline into Dataverse:** linked service, copy activity, the Dataverse sink with an alternate key, and the monitoring screen. Read it before Part 7.
 
 Each one has real screenshots from my lab, explains every line, and breaks things on purpose so you learn to fix them.
 
