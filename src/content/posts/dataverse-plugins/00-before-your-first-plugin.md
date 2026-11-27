@@ -4,7 +4,7 @@ description: "Zero C# experience? Five simple Dynamics 365 plugins with every li
 series: dataverse-plugins
 part: 0
 label: "Part 0"
-pubDate: 2026-11-28
+pubDate: 2026-11-27
 tags: [Dataverse, Plugins, Dynamics 365, C#]
 ---
 
