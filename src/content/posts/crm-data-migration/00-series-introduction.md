@@ -61,6 +61,8 @@ The main parts assume you can read a SQL query and run a load. If you can't yet,
 
 Each one has real screenshots from my lab, explains every line, and breaks things on purpose so you learn to fix them.
 
+**Practice database:** every part uses LoanHub Legacy, a fake 12-year-old lending CRM with 610,000 customers and 1.15 million loans, dirty on purpose. Build it yourself in a few minutes: [github.com/Krish8714/loanhub-legacy](https://github.com/Krish8714/loanhub-legacy).
+
 Each part has real scenarios, the mistakes I see most, and an interview question at the end.
 
 Part 1 is coming next: **"Just migrate everything"** — the sentence that costs projects the most.
