@@ -1,4 +1,4 @@
-export interface Series { slug: string; title: string; tagline: string; description: string; plannedParts: number; introOffset?: number; short: string; outline?: string[]; }
+export interface Series { slug: string; title: string; tagline: string; description: string; plannedParts: number; introOffset?: number; firstPart?: number; short: string; outline?: string[]; }
 
 export const SERIES: Series[] = [
   {
@@ -6,8 +6,9 @@ export const SERIES: Series[] = [
     short: 'Plugins',
     title: 'Dataverse Plugins, Built for Production',
     tagline: 'A plugin is a contract on the data, not a feature on a screen.',
-    description: 'Twelve parts that take one real plugin from the demo to production: stages, Target and images, loops, external calls, performance, testing, observability, security, ALM, Custom APIs and AI agents.',
-    plannedParts: 12,
+    description: 'A Part 0 for readers with zero C#, then twelve parts that take one real plugin from the demo to production: stages, Target and images, loops, external calls, performance, testing, observability, security, ALM, Custom APIs and AI agents.',
+    plannedParts: 13,
+    firstPart: 0,
   },
   {
     slug: 'azure-functions-dynamics-365',
