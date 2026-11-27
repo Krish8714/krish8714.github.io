@@ -1,0 +1,543 @@
+<!doctype html><html><head><meta name="robots" content="noindex"><meta charset="utf-8"><title>Dynamics 365 JavaScript, Part 1: Your First Web Resource</title></head><body><h1>Dynamics 365 JavaScript, Part 1: Your First Web Resource</h1>
+<p><em>Part 1 of my new series, Dynamics 365 JavaScript, from Basics to
+Production. Every part builds working code, then breaks it on purpose
+the way it really breaks in projects, and shows you how to debug and fix
+it.</em></p>
+<blockquote>
+<p><strong>Writing CRM JavaScript is easy. Finding out why it didn't run
+is the job.</strong></p>
+</blockquote>
+<h3 id="the-scenario-the-script-that-never-ran">The scenario: the script
+that never ran</h3>
+<p>The lending bank from my Real-World Series wants one small thing on
+the Loan Application form: when an officer opens a loan, show a yellow
+banner if the applicant's PAN hasn't been verified.</p>
+<p>A new developer, Arjun, gets the task on Monday morning. He writes
+four lines of JavaScript, uploads them, refreshes the form, and nothing
+happens. No banner. No error. Nothing.</p>
+<p>By Tuesday he has tried:</p>
+<ol type="1">
+<li>Uploading the file again.</li>
+<li>Clearing the browser cache.</li>
+<li>Copying a different script from a blog, which uses
+<code>Xrm.Page</code> and shows a red error dialog instead.</li>
+<li>Asking in the team chat, where someone says "did you publish?" (he
+had, but only the web resource, not the form).</li>
+</ol>
+<p>Arjun's code was fine. <strong>Every problem was in how the script
+was created, attached and called.</strong> That's what this first part
+is about, because every later part of the series depends on getting this
+right, and on knowing how to prove where it broke.</p>
+<p>By the end of this part you'll be able to:</p>
+<ul>
+<li>create a JavaScript web resource the way production teams do,</li>
+<li>attach it to a form and call it with the execution context,</li>
+<li>break it in the six ways it most often breaks, recognise each from
+the error (or the silence), and fix it,</li>
+<li>debug any "my script didn't run" problem in under five minutes.</li>
+</ul>
+<h3 id="the-thought-shift">The thought shift</h3>
+<p>Most tutorials teach JavaScript in Dynamics 365 as "write a function,
+paste it in". So when it fails, people look at the function.</p>
+<p>In practice, a form script is a <strong>chain of five links</strong>,
+and any one of them can break silently:</p>
+<ol type="1">
+<li><strong>The file</strong> exists as a web resource, and is
+published.</li>
+<li><strong>The library</strong> is added to this specific form.</li>
+<li><strong>The handler</strong> is registered on the right event, with
+the right function name, and the right checkbox.</li>
+<li><strong>The browser</strong> has loaded the new version, not a
+cached old one.</li>
+<li><strong>The code</strong> runs, and doesn't throw.</li>
+</ol>
+<p>When "nothing happens", check the links in that order. The code is
+the <strong>last</strong> suspect, not the first.</p>
+<h3 id="the-concepts-in-simple-words">The concepts in simple words</h3>
+<ul><li><strong><strong>Web resource</strong></strong> — In plain words: A file stored inside Dataverse: JavaScript, HTML, CSS, images; Where you see it: Solution &gt; Web resources</li><li><strong><strong>Form library</strong></strong> — In plain words: A web resource that a form loads when it opens; Where you see it: Form designer &gt; Form libraries</li><li><strong><strong>Event handler</strong></strong> — In plain words: "When this event happens, call this function from that library"; Where you see it: Form designer &gt; Events</li><li><strong><strong>Form events</strong></strong> — In plain words: OnLoad (form opens), OnChange (a column changes), OnSave (form
+saves); Where you see it: Form, column and form-save events</li><li><strong><strong>Execution context</strong></strong> — In plain words: An object Dataverse passes to your function, describing what just
+happened; Where you see it: Your function's first parameter</li><li><strong><strong>formContext</strong></strong> — In plain words: The form itself: its columns, controls, tabs, notifications; Where you see it: <code>executionContext.getFormContext()</code></li><li><strong><strong>Namespace</strong></strong> — In plain words: One global object that holds all your functions, so names never
+clash; Where you see it: <code>var LoanHub = window.LoanHub || {};</code></li></ul>
+<h4 id="why-executioncontext-and-not-xrmpage">Why
+<code>executionContext</code> and not <code>Xrm.Page</code></h4>
+<p><code>Xrm.Page</code> assumed there was exactly one form on the
+screen. Modern model-driven apps can show a main form, a quick create
+form, a side pane and a dialog at the same time. <code>Xrm.Page</code>
+can't tell them apart. <code>executionContext.getFormContext()</code>
+always gives you the form that <strong>raised the event</strong>. That's
+why the checkbox <strong>"Pass execution context as first
+parameter"</strong> matters so much: without it, your function receives
+nothing useful.</p>
+<h4 id="why-a-namespace">Why a namespace</h4>
+<p>Every form loads all its libraries into the same browser window. If
+two scripts both declare <code>function onLoad()</code>, the last one
+loaded wins, and the other script silently calls the wrong function.
+Wrapping everything in one object, such as
+<code>LoanHub.LoanApplication</code>, makes each function name
+unique.</p>
+<h3 id="build-it-your-first-web-resource-step-by-step">Build it: your
+first web resource, step by step</h3>
+<p><strong>Requirement:</strong> when a Loan Application opens and
+<strong>PAN Verified</strong> is No, show a yellow banner: "PAN not
+verified yet. Verify before moving to Credit assessment."</p>
+<h4 id="step-1-write-the-file">Step 1: write the file</h4>
+<p>Create <code>loanapplication.js</code> on your machine:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode javascript"><code class="sourceCode javascript"><span id="cb1-1"><a aria-hidden="true" href="#cb1-1" tabindex="-1"></a><span class="co">// Web resource: lh_/js/loanapplication.js</span></span>
+<span id="cb1-2"><a aria-hidden="true" href="#cb1-2" tabindex="-1"></a><span class="co">// Table: Loan Application (lh_loanapplication)</span></span>
+<span id="cb1-3"><a aria-hidden="true" href="#cb1-3" tabindex="-1"></a><span class="kw">var</span> LoanHub <span class="op">=</span> <span class="bu">window</span><span class="op">.</span><span class="at">LoanHub</span> <span class="op">||</span> {}<span class="op">;</span></span>
+<span id="cb1-4"><a aria-hidden="true" href="#cb1-4" tabindex="-1"></a></span>
+<span id="cb1-5"><a aria-hidden="true" href="#cb1-5" tabindex="-1"></a>LoanHub<span class="op">.</span><span class="at">LoanApplication</span> <span class="op">=</span> (<span class="kw">function</span> () {</span>
+<span id="cb1-6"><a aria-hidden="true" href="#cb1-6" tabindex="-1"></a>    <span class="st">"use strict"</span><span class="op">;</span></span>
+<span id="cb1-7"><a aria-hidden="true" href="#cb1-7" tabindex="-1"></a></span>
+<span id="cb1-8"><a aria-hidden="true" href="#cb1-8" tabindex="-1"></a>    <span class="kw">var</span> BANNER_ID <span class="op">=</span> <span class="st">"pan-not-verified"</span><span class="op">;</span></span>
+<span id="cb1-9"><a aria-hidden="true" href="#cb1-9" tabindex="-1"></a></span>
+<span id="cb1-10"><a aria-hidden="true" href="#cb1-10" tabindex="-1"></a>    <span class="co">// Registered on Form OnLoad with "Pass execution context as first parameter" ticked</span></span>
+<span id="cb1-11"><a aria-hidden="true" href="#cb1-11" tabindex="-1"></a>    <span class="kw">function</span> <span class="fu">onLoad</span>(executionContext) {</span>
+<span id="cb1-12"><a aria-hidden="true" href="#cb1-12" tabindex="-1"></a>        <span class="kw">var</span> formContext <span class="op">=</span> executionContext<span class="op">.</span><span class="fu">getFormContext</span>()<span class="op">;</span></span>
+<span id="cb1-13"><a aria-hidden="true" href="#cb1-13" tabindex="-1"></a>        <span class="kw">var</span> panVerified <span class="op">=</span> formContext<span class="op">.</span><span class="fu">getAttribute</span>(<span class="st">"lh_panverified"</span>)<span class="op">;</span></span>
+<span id="cb1-14"><a aria-hidden="true" href="#cb1-14" tabindex="-1"></a></span>
+<span id="cb1-15"><a aria-hidden="true" href="#cb1-15" tabindex="-1"></a>        <span class="cf">if</span> (<span class="op">!</span>panVerified) {</span>
+<span id="cb1-16"><a aria-hidden="true" href="#cb1-16" tabindex="-1"></a>            <span class="co">// The column isn't on this form: do nothing, but say so for whoever debugs</span></span>
+<span id="cb1-17"><a aria-hidden="true" href="#cb1-17" tabindex="-1"></a>            <span class="bu">console</span><span class="op">.</span><span class="fu">warn</span>(<span class="st">"LoanHub.LoanApplication.onLoad: lh_panverified is not on this form"</span>)<span class="op">;</span></span>
+<span id="cb1-18"><a aria-hidden="true" href="#cb1-18" tabindex="-1"></a>            <span class="cf">return</span><span class="op">;</span></span>
+<span id="cb1-19"><a aria-hidden="true" href="#cb1-19" tabindex="-1"></a>        }</span>
+<span id="cb1-20"><a aria-hidden="true" href="#cb1-20" tabindex="-1"></a></span>
+<span id="cb1-21"><a aria-hidden="true" href="#cb1-21" tabindex="-1"></a>        <span class="cf">if</span> (panVerified<span class="op">.</span><span class="fu">getValue</span>() <span class="op">!==</span> <span class="kw">true</span>) {</span>
+<span id="cb1-22"><a aria-hidden="true" href="#cb1-22" tabindex="-1"></a>            formContext<span class="op">.</span><span class="at">ui</span><span class="op">.</span><span class="fu">setFormNotification</span>(</span>
+<span id="cb1-23"><a aria-hidden="true" href="#cb1-23" tabindex="-1"></a>                <span class="st">"PAN not verified yet. Verify before moving to Credit assessment."</span><span class="op">,</span></span>
+<span id="cb1-24"><a aria-hidden="true" href="#cb1-24" tabindex="-1"></a>                <span class="st">"WARNING"</span><span class="op">,</span></span>
+<span id="cb1-25"><a aria-hidden="true" href="#cb1-25" tabindex="-1"></a>                BANNER_ID)<span class="op">;</span></span>
+<span id="cb1-26"><a aria-hidden="true" href="#cb1-26" tabindex="-1"></a>        } <span class="cf">else</span> {</span>
+<span id="cb1-27"><a aria-hidden="true" href="#cb1-27" tabindex="-1"></a>            formContext<span class="op">.</span><span class="at">ui</span><span class="op">.</span><span class="fu">clearFormNotification</span>(BANNER_ID)<span class="op">;</span></span>
+<span id="cb1-28"><a aria-hidden="true" href="#cb1-28" tabindex="-1"></a>        }</span>
+<span id="cb1-29"><a aria-hidden="true" href="#cb1-29" tabindex="-1"></a>    }</span>
+<span id="cb1-30"><a aria-hidden="true" href="#cb1-30" tabindex="-1"></a></span>
+<span id="cb1-31"><a aria-hidden="true" href="#cb1-31" tabindex="-1"></a>    <span class="cf">return</span> {</span>
+<span id="cb1-32"><a aria-hidden="true" href="#cb1-32" tabindex="-1"></a>        <span class="dt">onLoad</span><span class="op">:</span> onLoad</span>
+<span id="cb1-33"><a aria-hidden="true" href="#cb1-33" tabindex="-1"></a>    }<span class="op">;</span></span>
+<span id="cb1-34"><a aria-hidden="true" href="#cb1-34" tabindex="-1"></a>})()<span class="op">;</span></span></code></pre></div>
+<p><strong>What each part does:</strong></p>
+<ul>
+<li><code>var LoanHub = window.LoanHub || {};</code> creates the
+namespace once, and reuses it if another LoanHub file already created
+it.</li>
+<li>The <code>(function () { ... })()</code> wrapper keeps
+<code>BANNER_ID</code> and helper functions private. Only what's in
+<code>return { ... }</code> is visible to the form.</li>
+<li><code>"use strict"</code> turns silent mistakes (like a typo
+creating a new global variable) into errors you can see.</li>
+<li><code>getAttribute</code> returns <strong>null</strong> if the
+column isn't on this form. The guard turns a crash into a clear console
+message.</li>
+<li>The notification has a <strong>unique ID</strong>, so the same
+function can clear it later.</li>
+</ul>
+<h4 id="step-2-create-the-web-resource">Step 2: create the web
+resource</h4>
+<ol type="1">
+<li>In Power Apps, open your solution (never the Default solution).</li>
+<li>Select <strong>New &gt; More &gt; Web resource</strong>.</li>
+<li><strong>Display name:</strong> Loan Application scripts.
+<strong>Name:</strong> <code>lh_/js/loanapplication.js</code> (the
+prefix comes from your publisher; the folder-style name keeps web
+resources organised).</li>
+<li><strong>Type:</strong> JavaScript (JS). Upload the file.</li>
+<li><strong>Save</strong>, then <strong>Publish</strong>.</li>
+</ol>
+<h4 id="step-3-add-it-to-the-form-and-register-the-handler">Step 3: add
+it to the form and register the handler</h4>
+<ol type="1">
+<li>Open the <strong>Loan Application</strong> main form in the form
+designer.</li>
+<li>In the left pane, open <strong>Form libraries &gt; Add
+library</strong>, find <code>lh_/js/loanapplication.js</code>, and add
+it.</li>
+<li>Open <strong>Events</strong> (with the form itself selected, not a
+field) &gt; <strong>On Load</strong> &gt; <strong>Add event
+handler</strong>.</li>
+<li><strong>Library:</strong> <code>lh_/js/loanapplication.js</code>.
+<strong>Function:</strong> <code>LoanHub.LoanApplication.onLoad</code>
+(exactly, including the namespace; no brackets).</li>
+<li>Tick <strong>Enabled</strong> and <strong>Pass execution context as
+first parameter</strong>.</li>
+<li><strong>Save and publish</strong> the form.</li>
+</ol>
+<h4 id="step-4-see-it-run">Step 4: see it run</h4>
+<ol type="1">
+<li>Open the app and a loan with PAN Verified = No.</li>
+<li>Do a hard refresh (Ctrl+F5) the first time, so the browser fetches
+the new file.</li>
+<li>You should see the yellow banner at the top of the form.</li>
+</ol>
+<h4 id="step-5-prove-it-ran-before-anything-goes-wrong">Step 5: prove it
+ran (before anything goes wrong)</h4>
+<p>Get into the habit now, while it works:</p>
+<ol type="1">
+<li><p>Press <strong>F12</strong> to open DevTools, go to
+<strong>Sources</strong>, and press <strong>Ctrl+P</strong>.</p></li>
+<li><p>Type <code>loanapplication</code> and open the file. If you can
+find it, <strong>the library loaded</strong>.</p>
+<p><img alt="DevTools Sources tab with loanapplication.js open, next to the Loan Application form showing the PAN banner" src="https://krish8714.github.io/images/js-part1-sources.png"/></p></li>
+<li><p>Click the line number next to <code>var formContext = ...</code>
+to set a <strong>breakpoint</strong>.</p></li>
+<li><p>Refresh the form. Execution stops on your line: <strong>the
+handler is registered and called</strong>.</p>
+<p><img alt="Paused on breakpoint at line 12: Scope shows executionContext set and formContext still undefined" src="https://krish8714.github.io/images/js-part1-breakpoint.png"/></p>
+<p>Look at <strong>Scope</strong> on the right:
+<code>executionContext</code> has a value, while
+<code>formContext</code> and <code>panVerified</code> are still
+<code>undefined</code>, because line 12 hasn't run yet.</p></li>
+<li><p>Hover over <code>panVerified</code> to see its value, then press
+<strong>F8</strong> to continue.</p></li>
+</ol>
+<p>Those five steps check four of the five links in the chain. You'll
+use them in every part of this series.</p>
+<h3 id="break-it-debug-it-fix-it">Break it, debug it, fix it</h3>
+<p>Now we break the working script on purpose, six ways. Each one is a
+real failure from real projects. For each: what you see, how to find the
+cause in minutes, the fix, and the habit that prevents it.</p>
+<ul><li><strong>1</strong> — What you broke: Typo in the function name; What you see: Script Error; Show Details says "Web resource method does not
+exist"; Link in the chain: 3. The handler</li><li><strong>2</strong> — What you broke: Forgot "Pass execution context"; What you see: Script Error: cannot read properties of undefined; Link in the chain: 3. The handler</li><li><strong>3</strong> — What you broke: Library on a different form; What you see: Nothing at all; Link in the chain: 2. The library</li><li><strong>4</strong> — What you broke: Old version still cached; What you see: Your fix "doesn't work"; Link in the chain: 4. The browser</li><li><strong>5</strong> — What you broke: Column not on this form; What you see: Script Error: cannot read properties of null; Link in the chain: 5. The code</li><li><strong>6</strong> — What you broke: A syntax error in the file; What you see: Every handler from that file fails; Link in the chain: 1. The file</li></ul>
+<h4 id="break-1-a-typo-in-the-function-name">Break 1: a typo in the
+function name</h4>
+<p><strong>Break it:</strong> in the event handler, type
+<code>LoanHub.LoanApplicaton.onLoad</code> (missing an "i").</p>
+<p><strong>What you see:</strong> when the form opens, a <strong>Script
+Error</strong> dialog says only <em>"One of the scripts for this record
+has caused an error."</em> The real message is hidden: select
+<strong>Show Details</strong> and you'll see something like:</p>
+<blockquote>
+<p>Web resource method does not exist: LoanHub.LoanApplicaton.onLoad.
+However the closest object we found is LoanHub that contains these
+properties: LoanApplication.</p>
+</blockquote>
+<p>Below it are the <strong>Event Name</strong>, <strong>Function
+Name</strong> and <strong>Web Resource Name</strong>. Always open Show
+Details first; the summary line never tells you what broke.</p>
+<p><strong>Debug it:</strong></p>
+<ol type="1">
+<li><p>Read the details carefully: the function name it prints is the
+name <strong>in the registration</strong>, not in your file. Here
+Dataverse even points at the fix: the closest object is
+<code>LoanHub</code>, and it has a property called
+<code>LoanApplication</code>.</p></li>
+<li><p>Open DevTools (F12) &gt; <strong>Console</strong>. Form scripts
+don't run in the main page: they run inside hidden frames (their ids
+start with <code>ClientApiFrame_</code>). In the Console's context
+dropdown (top-left, it says <code>top</code> by default) these frames
+are listed as <strong>id-NN (blank.htm)</strong>, and the number changes
+on every page load. Pick each <strong>blank.htm</strong> entry in turn
+until the next step works. Shortcut: while execution is paused on a
+breakpoint in your file, the Console switches to your script's frame
+automatically.</p></li>
+<li><p>Type <code>LoanHub.LoanApplication</code> and press Enter. If you
+see <code>{onLoad: ƒ}</code>, the file is fine and the registration is
+wrong. In the wrong frame you'll get <strong>ReferenceError: LoanHub is
+not defined</strong> even when everything works, which is why the frame
+matters:</p>
+<p><img alt="Console: in frame id-41 LoanHub is not defined; after switching to id-39, LoanHub.LoanApplication returns {onLoad: ƒ}" src="https://krish8714.github.io/images/js-part1-console-frame.png"/></p></li>
+</ol>
+<p><strong>Fix it:</strong> correct the function name in the form's
+event handler, save and publish the form.</p>
+<p><strong>Prevent it:</strong> copy the function name from the code
+(namespace included) instead of typing it, and keep one naming pattern:
+<code>Publisher.Table.function</code>.</p>
+<h4 id="break-2-pass-execution-context-as-first-parameter-not-ticked">Break
+2: "Pass execution context as first parameter" not ticked</h4>
+<p><strong>Break it:</strong> edit the handler and untick the
+checkbox.</p>
+<p><strong>What you see:</strong> the same Script Error summary. Under
+<strong>Show Details</strong>: <strong>Cannot read properties of
+undefined (reading 'getFormContext')</strong>, with the function and web
+resource names below it.</p>
+<p><strong>Debug it:</strong></p>
+<ol type="1">
+<li>Set a breakpoint on the first line of <code>onLoad</code> (Sources
+&gt; Ctrl+P &gt; <code>loanapplication</code>).</li>
+<li>Refresh. When it stops, hover <code>executionContext</code>: it's
+<strong>undefined</strong>.</li>
+<li>That means Dataverse called your function but passed nothing.</li>
+</ol>
+<p><strong>Fix it:</strong> tick the checkbox, save and publish the
+form.</p>
+<p><strong>Prevent it:</strong> add a first-line guard in every handler
+while you develop:
+<code>if (!executionContext) { console.error("No execution context: check the handler registration"); return; }</code>.</p>
+<h4 id="break-3-the-library-is-on-a-different-form">Break 3: the library
+is on a different form</h4>
+<p><strong>Break it:</strong> the table has two main forms, "Loan
+Officer" and "Information". You add the library and handler to
+"Information", but officers open "Loan Officer".</p>
+<p><strong>What you see:</strong> nothing. No banner, no error.</p>
+<p><strong>Debug it:</strong></p>
+<ol type="1">
+<li>Check which form is open: the form name shows at the top of the
+record (and in the form selector if the user has more than one).</li>
+<li>DevTools &gt; Sources &gt; Ctrl+P &gt; <code>loanapplication</code>.
+If the file <strong>isn't listed</strong>, this form didn't load the
+library.</li>
+</ol>
+<p><strong>Fix it:</strong> add the library and handler to every form
+that needs them (including quick create forms, if they need the
+logic).</p>
+<p><strong>Prevent it:</strong> when you add a script, list every form
+of the table and decide for each one. Remember Part 5 of the Real-World
+Series: users see the first form their role allows, which may not be the
+one you edited.</p>
+<h4 id="break-4-the-browser-is-running-the-old-version">Break 4: the
+browser is running the old version</h4>
+<p><strong>Break it:</strong> change the banner text, upload the file,
+publish, and refresh normally.</p>
+<p><strong>What you see:</strong> the old text. Your fix "doesn't
+work".</p>
+<p><strong>Debug it:</strong></p>
+<ol type="1">
+<li>DevTools &gt; Sources &gt; open <code>loanapplication.js</code>.
+Look at the code there: is it your new text?</li>
+<li>If not, the browser used a cached copy.</li>
+</ol>
+<p><strong>Fix it:</strong> confirm the web resource was
+<strong>published</strong>, then hard refresh (Ctrl+Shift+R). While
+developing, tick <strong>Application &gt; Service workers &gt; Bypass
+for network</strong> in DevTools. Model-driven apps serve files through
+a service worker, so the Network tab's <strong>Disable cache</strong>
+box on its own is not enough (Part 2 shows this in detail).</p>
+<p><strong>It's not only the file that gets cached.</strong> The
+<strong>form definition</strong> is cached too: the list of libraries
+and handlers, and settings such as "Pass execution context". When I
+tested this series, a fixed and published handler kept failing with the
+old function name after a normal refresh. A hard refresh (Ctrl+Shift+R)
+picked up the change straight away.</p>
+<p><strong>Prevent it:</strong> after every upload or form change, hard
+refresh, then check the code in the Sources tab before testing. It takes
+five seconds and saves hours of fixing code that was never running.</p>
+<h4 id="break-5-the-column-isnt-on-this-form">Break 5: the column isn't
+on this form</h4>
+<p><strong>Break it:</strong> remove the guard and write
+<code>formContext.getAttribute("lh_panverified").getValue()</code>. Then
+remove the PAN Verified column from the form.</p>
+<p><strong>What you see:</strong> a Script Error saying it
+<strong>cannot read properties of null (reading
+'getValue')</strong>.</p>
+<p><strong>Debug it:</strong></p>
+<ol type="1">
+<li>The error's details include the file and line number. Open that line
+in Sources.</li>
+<li>Set a breakpoint, refresh, and hover the
+<code>getAttribute(...)</code> call: it returns
+<strong>null</strong>.</li>
+<li><code>getAttribute</code> returns null when the column isn't on the
+form, or when the logical name is misspelled
+(<code>lh_panverfied</code>).</li>
+</ol>
+<p><strong>Fix it:</strong> put the column back on the form (it can be
+hidden), or keep the guard and handle the missing column.</p>
+<p><strong>Prevent it:</strong> never chain a method straight onto
+<code>getAttribute</code> or <code>getControl</code>. Check for null
+first, every time.</p>
+<h4 id="break-6-a-syntax-error-in-the-file">Break 6: a syntax error in
+the file</h4>
+<p><strong>Break it:</strong> delete one closing bracket and upload.</p>
+<p><strong>What you see:</strong> "method does not exist" for
+<strong>every</strong> handler from that file, even ones you didn't
+touch.</p>
+<p><strong>Debug it:</strong></p>
+<ol type="1">
+<li>DevTools &gt; <strong>Console</strong>: a red
+<strong>SyntaxError</strong> names the file and line.</li>
+<li>Because the file failed to parse,
+<code>LoanHub.LoanApplication</code> was never created, so every
+function in it "does not exist".</li>
+</ol>
+<p><strong>Fix it:</strong> fix the syntax, upload, publish, hard
+refresh.</p>
+<p><strong>Prevent it:</strong> check the file before uploading. Open it
+in an editor with JavaScript checking turned on (VS Code does this out
+of the box), or paste it into the browser console to see if it
+parses.</p>
+<h3 id="day-2-what-goes-wrong-after-go-live">Day 2: what goes wrong
+after go-live</h3>
+<p>The six breaks above happen on your machine. These happen in test and
+production, usually reported as "the form is broken".</p>
+<h4 id="1-it-works-in-dev-but-not-in-test">1. "It works in dev, but not
+in test"</h4>
+<p><strong>What you see:</strong> the banner appears in development.
+After deploying the solution to test, nothing.</p>
+<p><strong>Why it happens:</strong> the form was changed in dev, but the
+<strong>form</strong> wasn't in the solution, only the web resource. Or
+the solution was imported and not published.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Open the form in test and check <strong>Form libraries</strong> and
+<strong>Events</strong>. If they're missing, the form didn't
+travel.</li>
+<li>Add the <strong>form</strong> (not just the table's web resource) to
+the solution, export and import again, then publish.</li>
+<li>Add "form libraries and handlers present" to your deployment
+checklist.</li>
+</ol>
+<h4 id="2-two-scripts-one-function-name">2. Two scripts, one function
+name</h4>
+<p><strong>What you see:</strong> after another team adds their script
+to the same form, your banner stops appearing, or shows on the wrong
+records.</p>
+<p><strong>Why it happens:</strong> both scripts declared a global
+<code>function onLoad()</code>. The last one loaded replaced the
+other.</p>
+<p><strong>How to handle it:</strong> move every function into a
+namespace (<code>LoanHub.LoanApplication.onLoad</code>), and agree one
+namespace per publisher across teams.</p>
+<h4 id="3-the-script-works-for-admins-but-not-for-users">3. The script
+works for admins but not for users</h4>
+<p><strong>What you see:</strong> the same form, the same record, and
+the script fails only for loan officers.</p>
+<p><strong>Why it happens:</strong> the script reads data the user can't
+see (a related record, a secured column), or the user gets a different
+form than the admin does.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Reproduce with a test user in the same role. Testing as an admin
+hides the problem.</li>
+<li>Check the Network tab for failed calls (403 means a privilege is
+missing) and check which form the user gets.</li>
+<li>Fix the role or the form order, or make the script handle "no
+access" gracefully.</li>
+</ol>
+<h4 id="4-the-banner-disappeared-after-the-upgrade">4. "The banner
+disappeared after the upgrade"</h4>
+<p><strong>What you see:</strong> an old script using
+<code>Xrm.Page</code> starts behaving oddly after a platform update, or
+fails on quick create and in side panes.</p>
+<p><strong>Why it happens:</strong> <code>Xrm.Page</code> is deprecated.
+It assumes one form on the page, which modern apps no longer
+guarantee.</p>
+<p><strong>How to handle it:</strong> refactor each handler to accept
+<code>executionContext</code> and use <code>getFormContext()</code>. Do
+it form by form, testing each.</p>
+<h4 id="5-the-form-became-slow-after-adding-just-one-script">5. The form
+became slow after adding "just one script"</h4>
+<p><strong>What you see:</strong> users say the loan form takes longer
+to open.</p>
+<p><strong>Why it happens:</strong> OnLoad scripts run while the form
+loads. Heavy work there, especially requests one after another, delays
+the whole form.</p>
+<p><strong>How to handle it:</strong> keep OnLoad light (show, hide,
+notify); load extra data asynchronously; measure with the Network tab
+and with Monitor (<code>&amp;monitor=true</code> on the app URL). Part 8
+of this series covers async in depth.</p>
+<h4 id="6-a-user-reports-a-script-error-you-cant-reproduce">6. A user
+reports a Script Error you can't reproduce</h4>
+<p><strong>What you see:</strong> a screenshot of a Script Error from
+one user, on one record.</p>
+<p><strong>Why it happens:</strong> almost always data: an empty column,
+a lookup with no value, a record in a state your code didn't expect.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Ask for the record and the time, or for the error's details (the
+dialog lets the user see and copy them).</li>
+<li>Open the same record yourself, with the same role, and set a
+breakpoint where the error points.</li>
+<li>Fix the code to handle that data, not just the one record.</li>
+</ol>
+<h3 id="using-ai-with-your-first-web-resource">Using AI with your first
+web resource</h3>
+<p>AI is genuinely useful here, as long as you treat it like a fast
+junior developer whose work you check.</p>
+<h4 id="where-it-helps">Where it helps</h4>
+<ul>
+<li><strong>Writing the skeleton:</strong> namespace,
+<code>"use strict"</code>, the handler signature, null guards.</li>
+<li><strong>Explaining an error:</strong> paste the Script Error details
+and the line it points to, and ask what could cause it.</li>
+<li><strong>Reviewing old scripts:</strong> paste a legacy file and ask
+it to list every <code>Xrm.Page</code> use and missing null check.</li>
+</ul>
+<h4 id="prompts-that-work-copy-and-adapt">Prompts that work (copy and
+adapt)</h4>
+<pre class="text"><code>Write a Dynamics 365 model-driven app form script in plain JavaScript
+(no TypeScript, no Xrm.Page). Use the namespace LoanHub.LoanApplication
+and executionContext.getFormContext(). On form load, if the column
+lh_panverified is not true, show a WARNING form notification with a
+unique ID; otherwise clear it. Guard against the column not being on
+the form. Tell me exactly how to register the handler.</code></pre>
+<pre class="text"><code>This Dynamics 365 form script shows a Script Error: "&lt;paste the error
+details&gt;". Here is the code: &lt;paste&gt;. And here is the handler
+registration: library &lt;name&gt;, function &lt;name&gt;, pass execution context
+&lt;yes/no&gt;. List the possible causes in order of likelihood, and how to
+confirm each one in the browser's DevTools.</code></pre>
+<pre class="text"><code>Review this legacy Dynamics 365 form script. List every use of
+Xrm.Page, every getAttribute or getControl call without a null check,
+every global function outside a namespace, and every synchronous
+request. Then rewrite it with a namespace and executionContext.</code></pre>
+<h4 id="where-ai-goes-wrong-here">Where AI goes wrong here</h4>
+<ul>
+<li>It still writes <strong><code>Xrm.Page</code></strong> often,
+because so much old sample code online uses it. Always say "no
+Xrm.Page".</li>
+<li>It <strong>invents logical names</strong>: <code>panverified</code>,
+<code>lh_PanVerified</code>. Logical names are lowercase and include
+your prefix; check every one against the table.</li>
+<li>It <strong>forgets the registration</strong>. A perfect function
+with the wrong handler settings still does nothing. Ask it for the exact
+registration steps and check them against Step 3.</li>
+<li>It <strong>can't see your environment</strong>. It doesn't know
+which form users get, what's cached, or what's published. The five-link
+chain is still your job.</li>
+</ul>
+<h3 id="the-five-minute-my-script-didnt-run-checklist">The five-minute
+"my script didn't run" checklist</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"/><strong>The file:</strong> is the
+web resource published? Does Sources show your latest code?</label></li>
+<li><label><input type="checkbox"/><strong>The library:</strong> is it
+on <strong>this</strong> form (the one the user actually
+gets)?</label></li>
+<li><label><input type="checkbox"/><strong>The handler:</strong> right
+event, function name copied exactly (with namespace),
+<strong>Enabled</strong> and <strong>Pass execution context</strong>
+ticked, form published?</label></li>
+<li><label><input type="checkbox"/><strong>The browser:</strong> hard
+refresh (Ctrl+Shift+R) after every upload or form change, or
+<strong>Bypass for network</strong> ticked under Application &gt;
+Service workers?</label></li>
+<li><label><input type="checkbox"/><strong>The code:</strong> a
+breakpoint on the first line is hit? Any red errors in the
+Console?</label></li>
+</ul>
+<h3 id="interview-questions-with-the-answers-that-land">Interview
+questions, with the answers that land</h3>
+<p><strong>1. Why use <code>executionContext.getFormContext()</code>
+instead of <code>Xrm.Page</code>?</strong></p>
+<p><code>Xrm.Page</code> is deprecated and assumes one form on the page.
+A model-driven app can show a main form, quick create and side panes at
+once. <code>getFormContext()</code> returns the form that raised the
+event, so the code acts on the right one.</p>
+<p><strong>2. A form script "does nothing". How do you debug
+it?</strong></p>
+<p>I check the chain in order: the web resource is published, the
+library is on the form the user actually gets, the handler is registered
+with the exact function name and the execution context checkbox, the
+browser has the new version, and then the code itself, with a breakpoint
+on its first line.</p>
+<p><strong>3. What does "web resource method does not exist"
+mean?</strong></p>
+<p>The form called a function name that isn't defined when the library
+loads. Either the name in the registration is wrong, or the file failed
+to load or parse, so the namespace was never created.</p>
+<p><strong>4. Why wrap functions in a namespace?</strong></p>
+<p>All libraries on a form share one browser window. Global function
+names can collide, and the last one loaded wins. A namespace makes every
+function name unique.</p>
+<p><strong>5. Why does <code>getAttribute</code> return
+null?</strong></p>
+<p>The column isn't on the current form, or the logical name is wrong.
+Code must check for null before calling methods on it.</p>
+<h3 id="rule-of-thumb">Rule of thumb</h3>
+<p><strong>When a script "doesn't run", check the file, the library, the
+handler and the browser before you touch the code.</strong></p>
+<h3 id="next-in-the-series">Next in the series</h3>
+<p><strong>Part 2: The CRM debugging toolkit.</strong> Everything we
+used today in passing (Sources, breakpoints, the Console context, the
+Network tab, URL flags, Monitor, caching) properly, with a lab for
+each.</p>
+<hr/><p><em>Originally published on my blog, with the full series: <a href="https://krish8714.github.io">krish8714.github.io</a></em></p></body></html>
