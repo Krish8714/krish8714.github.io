@@ -1,0 +1,414 @@
+<!doctype html><html><head><meta name="robots" content="noindex"><meta charset="utf-8"><title>Where Should Logic Live? Business Rules and JavaScript</title></head><body><h1>Where Should Logic Live? Business Rules and JavaScript</h1>
+<p><em>Part 3A of my Dynamics 365 Real-World Series. Parts 1 and 2 built
+the data model and the security model for a lending bank. Now the rules:
+where should each piece of logic live? This part covers the form side.
+Part 3B covers the server side.</em></p>
+<blockquote>
+<p><strong>If a rule only holds on the form, it's a suggestion, not a
+rule.</strong></p>
+</blockquote>
+<h3 id="the-scenario-perfect-on-the-form-broken-in-the-table">The
+scenario: perfect on the form, broken in the table</h3>
+<p>The bank has three rules for loan applications:</p>
+<ol type="1">
+<li>Loans above <strong>₹25 lakh</strong> need a co-applicant.</li>
+<li>The applicant's <strong>PAN</strong> must be in the valid format (5
+letters, 4 digits, 1 letter).</li>
+<li>The <strong>Guarantor</strong> section should only appear for
+Business loans.</li>
+</ol>
+<p>The developer builds all three on the form. Testing goes well: try to
+save a ₹30 lakh loan without a co-applicant, and the form stops you.</p>
+<p>Two weeks after go-live, the data team imports 2,000 historical loans
+from Excel. Then the credit bureau integration starts creating
+applications through the Web API. A month later, a report shows:</p>
+<ul>
+<li>312 loans above ₹25 lakh with no co-applicant.</li>
+<li>87 PANs like <code>ABCD1234</code> and
+<code>pan pending</code>.</li>
+</ul>
+<p>Nothing was broken. <strong>The rules were only ever on the form, and
+imports and integrations never open a form.</strong></p>
+<h3 id="the-thought-shift">The thought shift</h3>
+<p>For every rule, ask one question before choosing a tool:</p>
+<p><strong>"Does this rule have to hold however the data
+arrives?"</strong></p>
+<ul>
+<li><strong>No, it only helps the person typing.</strong> (Show a field,
+give a hint, pre-fill a value.) → Form logic is perfect.</li>
+<li><strong>Yes, the data must never be wrong.</strong> (Required
+co-applicant above ₹25 lakh, valid PAN.) → The rule needs a server-side
+guard. The form can still give a nicer experience on top, but it can't
+be the only check.</li>
+</ul>
+<p>Think of a bank branch. A <strong>business rule</strong> is the sign
+at the counter. <strong>JavaScript</strong> is the assistant at the
+counter. Both help people who walk in through the front door, which is
+the form. <strong>Plugins</strong> and <strong>Power Automate</strong>
+work in the vault and the back office. That's Part 3B.</p>
+<h3 id="the-concepts-in-simple-words">The concepts in simple words</h3>
+<h4 id="business-rules">Business rules</h4>
+<p>If-then logic built in a visual designer, with no code.</p>
+<ul><li><strong>Show or hide a field</strong> — They can't: Show or hide a <strong>tab or section</strong></li><li><strong>Enable or disable (lock) a field</strong> — They can't: Read columns from <strong>other tables</strong></li><li><strong>Set a field value, clear it, set a default</strong> — They can't: Call an API or a flow</li><li><strong>Make a field required or optional</strong> — They can't: Run on events other than load and change</li><li><strong>Show an error message on a field</strong> — They can't: Loop over related records</li><li><strong>Show a recommendation</strong> — They can't: </li></ul>
+<h4 id="scope-the-setting-most-people-miss">Scope: the setting most
+people miss</h4>
+<ul><li><strong>A specific form</strong> — Where it runs: Only in the browser, on that form; What reaches imports and the API: Nothing</li><li><strong>All Forms</strong> — Where it runs: Only in the browser, on every form of the table; What reaches imports and the API: Nothing</li><li><strong><strong>Entity</strong> (Table)</strong> — Where it runs: In the browser <strong>and on the server</strong>; What reaches imports and the API: Error messages and set values. Show/hide, lock and required are
+form-only effects</li></ul>
+<p>So "make Co-applicant required" with Entity scope still doesn't stop
+an import. "Show an error message when Amount &gt; 25 lakh and
+Co-applicant is empty" with Entity scope <strong>does</strong>.</p>
+<h4 id="javascript">JavaScript</h4>
+<p>Code you upload as a <strong>web resource</strong> and register on
+form events:</p>
+<ul>
+<li><strong>OnLoad:</strong> the form opens.</li>
+<li><strong>OnChange:</strong> a column's value changes.</li>
+<li><strong>OnSave:</strong> the user (or autosave) saves.</li>
+</ul>
+<p>It gives the best user experience: instant feedback, hiding whole
+sections, reading related data, calling APIs. And it's subject to the
+same limit as business rules: <strong>it only runs where a form
+runs.</strong></p>
+<h3 id="implementation-1-the-co-applicant-rule-as-a-business-rule-with-the-right-scope">Implementation
+1: the co-applicant rule as a business rule, with the right scope</h3>
+<p><strong>Steps:</strong></p>
+<ol type="1">
+<li>Open the Loan Application table, select <strong>Business rules &gt;
+New business rule</strong>.</li>
+<li>Condition: <strong>Loan Amount</strong> is greater than
+<strong>2500000</strong>.</li>
+<li>If true:
+<ul>
+<li><strong>Show</strong> Co-applicant.</li>
+<li><strong>Set business required</strong> on Co-applicant.</li>
+</ul></li>
+<li>Add a second condition inside the true branch: Co-applicant
+<strong>does not contain data</strong>. If true: <strong>Show error
+message</strong> on Co-applicant: "Loans above ₹25 lakh need a
+co-applicant."</li>
+<li>If false (amount ≤ ₹25 lakh): <strong>Hide</strong> Co-applicant and
+set it <strong>Not business required</strong>.</li>
+<li>Set <strong>Scope</strong> to <strong>Entity</strong>.</li>
+<li>Save, <strong>Validate</strong>, then
+<strong>Activate</strong>.</li>
+</ol>
+<p><strong>What you now get:</strong></p>
+<ul>
+<li>On the form: the field appears, becomes required, and an error shows
+if it's empty.</li>
+<li>On import or API: the error message is enforced on the server, so
+the bad row fails with that message.</li>
+</ul>
+<p><strong>Still recommended:</strong> a plugin for the same rule (Part
+3B), because business rules have limits (no access to other tables,
+harder to version and test), and compliance rules deserve code you can
+test.</p>
+<h3 id="implementation-2-pan-validation-in-javascript">Implementation 2:
+PAN validation in JavaScript</h3>
+<p>The business rule can't check a format. JavaScript can, instantly, as
+the user leaves the field.</p>
+<p><strong>Step 1: the web resource</strong></p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode javascript"><code class="sourceCode javascript"><span id="cb1-1"><a aria-hidden="true" href="#cb1-1" tabindex="-1"></a><span class="co">// Web resource: new_/js/loanapplication.validation.js</span></span>
+<span id="cb1-2"><a aria-hidden="true" href="#cb1-2" tabindex="-1"></a><span class="kw">var</span> LoanHub <span class="op">=</span> <span class="bu">window</span><span class="op">.</span><span class="at">LoanHub</span> <span class="op">||</span> {}<span class="op">;</span></span>
+<span id="cb1-3"><a aria-hidden="true" href="#cb1-3" tabindex="-1"></a>LoanHub<span class="op">.</span><span class="at">Validation</span> <span class="op">=</span> (<span class="kw">function</span> () {</span>
+<span id="cb1-4"><a aria-hidden="true" href="#cb1-4" tabindex="-1"></a>    <span class="st">"use strict"</span><span class="op">;</span></span>
+<span id="cb1-5"><a aria-hidden="true" href="#cb1-5" tabindex="-1"></a></span>
+<span id="cb1-6"><a aria-hidden="true" href="#cb1-6" tabindex="-1"></a>    <span class="kw">var</span> PAN_PATTERN <span class="op">=</span> <span class="ss">/</span><span class="sc">^[A-Z]{5}[0-9]{4}[A-Z]$</span><span class="ss">/</span><span class="op">;</span></span>
+<span id="cb1-7"><a aria-hidden="true" href="#cb1-7" tabindex="-1"></a></span>
+<span id="cb1-8"><a aria-hidden="true" href="#cb1-8" tabindex="-1"></a>    <span class="co">// Register on OnChange of new_pan, with "Pass execution context" ticked</span></span>
+<span id="cb1-9"><a aria-hidden="true" href="#cb1-9" tabindex="-1"></a>    <span class="kw">function</span> <span class="fu">onPanChange</span>(executionContext) {</span>
+<span id="cb1-10"><a aria-hidden="true" href="#cb1-10" tabindex="-1"></a>        <span class="kw">var</span> formContext <span class="op">=</span> executionContext<span class="op">.</span><span class="fu">getFormContext</span>()<span class="op">;</span></span>
+<span id="cb1-11"><a aria-hidden="true" href="#cb1-11" tabindex="-1"></a>        <span class="kw">var</span> attr <span class="op">=</span> formContext<span class="op">.</span><span class="fu">getAttribute</span>(<span class="st">"new_pan"</span>)<span class="op">;</span></span>
+<span id="cb1-12"><a aria-hidden="true" href="#cb1-12" tabindex="-1"></a>        <span class="kw">var</span> control <span class="op">=</span> formContext<span class="op">.</span><span class="fu">getControl</span>(<span class="st">"new_pan"</span>)<span class="op">;</span></span>
+<span id="cb1-13"><a aria-hidden="true" href="#cb1-13" tabindex="-1"></a>        <span class="cf">if</span> (<span class="op">!</span>attr <span class="op">||</span> <span class="op">!</span>control) { <span class="cf">return</span><span class="op">;</span> }          <span class="co">// field removed from this form</span></span>
+<span id="cb1-14"><a aria-hidden="true" href="#cb1-14" tabindex="-1"></a></span>
+<span id="cb1-15"><a aria-hidden="true" href="#cb1-15" tabindex="-1"></a>        <span class="kw">var</span> value <span class="op">=</span> (attr<span class="op">.</span><span class="fu">getValue</span>() <span class="op">||</span> <span class="st">""</span>)<span class="op">.</span><span class="fu">trim</span>()<span class="op">.</span><span class="fu">toUpperCase</span>()<span class="op">;</span></span>
+<span id="cb1-16"><a aria-hidden="true" href="#cb1-16" tabindex="-1"></a>        attr<span class="op">.</span><span class="fu">setValue</span>(value <span class="op">||</span> <span class="kw">null</span>)<span class="op">;</span>                <span class="co">// normalise case and spaces</span></span>
+<span id="cb1-17"><a aria-hidden="true" href="#cb1-17" tabindex="-1"></a></span>
+<span id="cb1-18"><a aria-hidden="true" href="#cb1-18" tabindex="-1"></a>        <span class="cf">if</span> (value <span class="op">&amp;&amp;</span> <span class="op">!</span>PAN_PATTERN<span class="op">.</span><span class="fu">test</span>(value)) {</span>
+<span id="cb1-19"><a aria-hidden="true" href="#cb1-19" tabindex="-1"></a>            control<span class="op">.</span><span class="fu">setNotification</span>(<span class="st">"PAN must be 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F)."</span><span class="op">,</span> <span class="st">"pan-format"</span>)<span class="op">;</span></span>
+<span id="cb1-20"><a aria-hidden="true" href="#cb1-20" tabindex="-1"></a>        } <span class="cf">else</span> {</span>
+<span id="cb1-21"><a aria-hidden="true" href="#cb1-21" tabindex="-1"></a>            control<span class="op">.</span><span class="fu">clearNotification</span>(<span class="st">"pan-format"</span>)<span class="op">;</span></span>
+<span id="cb1-22"><a aria-hidden="true" href="#cb1-22" tabindex="-1"></a>        }</span>
+<span id="cb1-23"><a aria-hidden="true" href="#cb1-23" tabindex="-1"></a>    }</span>
+<span id="cb1-24"><a aria-hidden="true" href="#cb1-24" tabindex="-1"></a></span>
+<span id="cb1-25"><a aria-hidden="true" href="#cb1-25" tabindex="-1"></a>    <span class="co">// Register on OnSave, with "Pass execution context" ticked</span></span>
+<span id="cb1-26"><a aria-hidden="true" href="#cb1-26" tabindex="-1"></a>    <span class="kw">function</span> <span class="fu">onSave</span>(executionContext) {</span>
+<span id="cb1-27"><a aria-hidden="true" href="#cb1-27" tabindex="-1"></a>        <span class="kw">var</span> formContext <span class="op">=</span> executionContext<span class="op">.</span><span class="fu">getFormContext</span>()<span class="op">;</span></span>
+<span id="cb1-28"><a aria-hidden="true" href="#cb1-28" tabindex="-1"></a>        <span class="kw">var</span> attr <span class="op">=</span> formContext<span class="op">.</span><span class="fu">getAttribute</span>(<span class="st">"new_pan"</span>)<span class="op">;</span></span>
+<span id="cb1-29"><a aria-hidden="true" href="#cb1-29" tabindex="-1"></a>        <span class="kw">var</span> value <span class="op">=</span> attr <span class="op">&amp;&amp;</span> attr<span class="op">.</span><span class="fu">getValue</span>()<span class="op">;</span></span>
+<span id="cb1-30"><a aria-hidden="true" href="#cb1-30" tabindex="-1"></a>        <span class="cf">if</span> (value <span class="op">&amp;&amp;</span> <span class="op">!</span>PAN_PATTERN<span class="op">.</span><span class="fu">test</span>(value)) {</span>
+<span id="cb1-31"><a aria-hidden="true" href="#cb1-31" tabindex="-1"></a>            executionContext<span class="op">.</span><span class="fu">getEventArgs</span>()<span class="op">.</span><span class="fu">preventDefault</span>()<span class="op">;</span>   <span class="co">// stop this save</span></span>
+<span id="cb1-32"><a aria-hidden="true" href="#cb1-32" tabindex="-1"></a>            formContext<span class="op">.</span><span class="at">ui</span><span class="op">.</span><span class="fu">setFormNotification</span>(<span class="st">"Fix the PAN format before saving."</span><span class="op">,</span> <span class="st">"ERROR"</span><span class="op">,</span> <span class="st">"pan-save"</span>)<span class="op">;</span></span>
+<span id="cb1-33"><a aria-hidden="true" href="#cb1-33" tabindex="-1"></a>        } <span class="cf">else</span> {</span>
+<span id="cb1-34"><a aria-hidden="true" href="#cb1-34" tabindex="-1"></a>            formContext<span class="op">.</span><span class="at">ui</span><span class="op">.</span><span class="fu">clearFormNotification</span>(<span class="st">"pan-save"</span>)<span class="op">;</span></span>
+<span id="cb1-35"><a aria-hidden="true" href="#cb1-35" tabindex="-1"></a>        }</span>
+<span id="cb1-36"><a aria-hidden="true" href="#cb1-36" tabindex="-1"></a>    }</span>
+<span id="cb1-37"><a aria-hidden="true" href="#cb1-37" tabindex="-1"></a></span>
+<span id="cb1-38"><a aria-hidden="true" href="#cb1-38" tabindex="-1"></a>    <span class="cf">return</span> { <span class="dt">onPanChange</span><span class="op">:</span> onPanChange<span class="op">,</span> <span class="dt">onSave</span><span class="op">:</span> onSave }<span class="op">;</span></span>
+<span id="cb1-39"><a aria-hidden="true" href="#cb1-39" tabindex="-1"></a>})()<span class="op">;</span></span></code></pre></div>
+<p><strong>Step 2: register it</strong></p>
+<ol type="1">
+<li>Create the web resource (type <strong>Script (JScript)</strong>),
+upload the file, save and publish.</li>
+<li>On the Loan Application main form: <strong>Form libraries &gt; Add
+library</strong>.</li>
+<li>Select the PAN column, <strong>Events &gt; On change</strong>:
+function <code>LoanHub.Validation.onPanChange</code>, tick <strong>Pass
+execution context as first parameter</strong>.</li>
+<li><strong>Form &gt; Events &gt; On Save</strong>: function
+<code>LoanHub.Validation.onSave</code>, tick the same box.</li>
+<li>Save and publish the form.</li>
+</ol>
+<p><strong>What the code shows about doing JavaScript
+properly:</strong></p>
+<ul>
+<li><code>executionContext.getFormContext()</code>, never the deprecated
+<code>Xrm.Page</code>.</li>
+<li>A <strong>namespace</strong> (<code>LoanHub.Validation</code>), so
+functions don't collide with other scripts.</li>
+<li>A <strong>null check</strong> for the attribute and control, because
+the field might not be on every form.</li>
+<li>Field notifications with <strong>unique IDs</strong>, so they can be
+cleared precisely.</li>
+<li><code>preventDefault()</code> in OnSave stops this save only. The
+same PAN check still needs to exist on the server (Part 3B).</li>
+</ul>
+<h3 id="implementation-3-show-the-guarantor-section-only-for-business-loans">Implementation
+3: show the Guarantor section only for Business loans</h3>
+<p>Business rules can't hide sections. JavaScript can.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode javascript"><code class="sourceCode javascript"><span id="cb2-1"><a aria-hidden="true" href="#cb2-1" tabindex="-1"></a>LoanHub<span class="op">.</span><span class="at">Layout</span> <span class="op">=</span> (<span class="kw">function</span> () {</span>
+<span id="cb2-2"><a aria-hidden="true" href="#cb2-2" tabindex="-1"></a>    <span class="st">"use strict"</span><span class="op">;</span></span>
+<span id="cb2-3"><a aria-hidden="true" href="#cb2-3" tabindex="-1"></a>    <span class="kw">var</span> PURPOSE_BUSINESS <span class="op">=</span> <span class="dv">100000003</span><span class="op">;</span>   <span class="co">// check the value in your choice column</span></span>
+<span id="cb2-4"><a aria-hidden="true" href="#cb2-4" tabindex="-1"></a></span>
+<span id="cb2-5"><a aria-hidden="true" href="#cb2-5" tabindex="-1"></a>    <span class="kw">function</span> <span class="fu">toggleGuarantor</span>(formContext) {</span>
+<span id="cb2-6"><a aria-hidden="true" href="#cb2-6" tabindex="-1"></a>        <span class="kw">var</span> purpose <span class="op">=</span> formContext<span class="op">.</span><span class="fu">getAttribute</span>(<span class="st">"new_purpose"</span>)<span class="op">;</span></span>
+<span id="cb2-7"><a aria-hidden="true" href="#cb2-7" tabindex="-1"></a>        <span class="kw">var</span> tab <span class="op">=</span> formContext<span class="op">.</span><span class="at">ui</span><span class="op">.</span><span class="at">tabs</span><span class="op">.</span><span class="fu">get</span>(<span class="st">"tab_general"</span>)<span class="op">;</span></span>
+<span id="cb2-8"><a aria-hidden="true" href="#cb2-8" tabindex="-1"></a>        <span class="kw">var</span> section <span class="op">=</span> tab <span class="op">&amp;&amp;</span> tab<span class="op">.</span><span class="at">sections</span><span class="op">.</span><span class="fu">get</span>(<span class="st">"section_guarantor"</span>)<span class="op">;</span></span>
+<span id="cb2-9"><a aria-hidden="true" href="#cb2-9" tabindex="-1"></a>        <span class="cf">if</span> (<span class="op">!</span>purpose <span class="op">||</span> <span class="op">!</span>section) { <span class="cf">return</span><span class="op">;</span> }</span>
+<span id="cb2-10"><a aria-hidden="true" href="#cb2-10" tabindex="-1"></a>        section<span class="op">.</span><span class="fu">setVisible</span>(purpose<span class="op">.</span><span class="fu">getValue</span>() <span class="op">===</span> PURPOSE_BUSINESS)<span class="op">;</span></span>
+<span id="cb2-11"><a aria-hidden="true" href="#cb2-11" tabindex="-1"></a>    }</span>
+<span id="cb2-12"><a aria-hidden="true" href="#cb2-12" tabindex="-1"></a></span>
+<span id="cb2-13"><a aria-hidden="true" href="#cb2-13" tabindex="-1"></a>    <span class="kw">function</span> <span class="fu">onLoad</span>(executionContext) {</span>
+<span id="cb2-14"><a aria-hidden="true" href="#cb2-14" tabindex="-1"></a>        <span class="kw">var</span> formContext <span class="op">=</span> executionContext<span class="op">.</span><span class="fu">getFormContext</span>()<span class="op">;</span></span>
+<span id="cb2-15"><a aria-hidden="true" href="#cb2-15" tabindex="-1"></a>        <span class="fu">toggleGuarantor</span>(formContext)<span class="op">;</span></span>
+<span id="cb2-16"><a aria-hidden="true" href="#cb2-16" tabindex="-1"></a>        formContext<span class="op">.</span><span class="fu">getAttribute</span>(<span class="st">"new_purpose"</span>)<span class="op">?.</span><span class="fu">addOnChange</span>(<span class="kw">function</span> (ctx) {</span>
+<span id="cb2-17"><a aria-hidden="true" href="#cb2-17" tabindex="-1"></a>            <span class="fu">toggleGuarantor</span>(ctx<span class="op">.</span><span class="fu">getFormContext</span>())<span class="op">;</span></span>
+<span id="cb2-18"><a aria-hidden="true" href="#cb2-18" tabindex="-1"></a>        })<span class="op">;</span></span>
+<span id="cb2-19"><a aria-hidden="true" href="#cb2-19" tabindex="-1"></a>    }</span>
+<span id="cb2-20"><a aria-hidden="true" href="#cb2-20" tabindex="-1"></a></span>
+<span id="cb2-21"><a aria-hidden="true" href="#cb2-21" tabindex="-1"></a>    <span class="cf">return</span> { <span class="dt">onLoad</span><span class="op">:</span> onLoad }<span class="op">;</span></span>
+<span id="cb2-22"><a aria-hidden="true" href="#cb2-22" tabindex="-1"></a>})()<span class="op">;</span></span></code></pre></div>
+<p>Register <code>LoanHub.Layout.onLoad</code> on the form's OnLoad.
+Attaching the OnChange handler in code keeps the registration in one
+place.</p>
+<p><strong>Remember:</strong> hiding the section is presentation only.
+The Guarantor rows are still there in views and the API, which is fine,
+because this isn't a security rule.</p>
+<h3 id="implementation-4-reading-related-data-without-freezing-the-form">Implementation
+4: reading related data without freezing the form</h3>
+<p>Requirement: when the user picks a Loan Product, show its maximum
+tenure as a hint.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode javascript"><code class="sourceCode javascript"><span id="cb3-1"><a aria-hidden="true" href="#cb3-1" tabindex="-1"></a>LoanHub<span class="op">.</span><span class="at">Product</span> <span class="op">=</span> (<span class="kw">function</span> () {</span>
+<span id="cb3-2"><a aria-hidden="true" href="#cb3-2" tabindex="-1"></a>    <span class="st">"use strict"</span><span class="op">;</span></span>
+<span id="cb3-3"><a aria-hidden="true" href="#cb3-3" tabindex="-1"></a></span>
+<span id="cb3-4"><a aria-hidden="true" href="#cb3-4" tabindex="-1"></a>    <span class="kw">async</span> <span class="kw">function</span> <span class="fu">onProductChange</span>(executionContext) {</span>
+<span id="cb3-5"><a aria-hidden="true" href="#cb3-5" tabindex="-1"></a>        <span class="kw">var</span> formContext <span class="op">=</span> executionContext<span class="op">.</span><span class="fu">getFormContext</span>()<span class="op">;</span></span>
+<span id="cb3-6"><a aria-hidden="true" href="#cb3-6" tabindex="-1"></a>        <span class="kw">var</span> lookup <span class="op">=</span> formContext<span class="op">.</span><span class="fu">getAttribute</span>(<span class="st">"new_loanproduct"</span>)<span class="op">?.</span><span class="fu">getValue</span>()<span class="op">;</span></span>
+<span id="cb3-7"><a aria-hidden="true" href="#cb3-7" tabindex="-1"></a>        <span class="kw">var</span> tenure <span class="op">=</span> formContext<span class="op">.</span><span class="fu">getControl</span>(<span class="st">"new_tenuremonths"</span>)<span class="op">;</span></span>
+<span id="cb3-8"><a aria-hidden="true" href="#cb3-8" tabindex="-1"></a>        <span class="cf">if</span> (<span class="op">!</span>tenure) { <span class="cf">return</span><span class="op">;</span> }</span>
+<span id="cb3-9"><a aria-hidden="true" href="#cb3-9" tabindex="-1"></a>        tenure<span class="op">.</span><span class="fu">clearNotification</span>(<span class="st">"max-tenure"</span>)<span class="op">;</span></span>
+<span id="cb3-10"><a aria-hidden="true" href="#cb3-10" tabindex="-1"></a>        <span class="cf">if</span> (<span class="op">!</span>lookup <span class="op">||</span> <span class="op">!</span>lookup<span class="op">.</span><span class="at">length</span>) { <span class="cf">return</span><span class="op">;</span> }</span>
+<span id="cb3-11"><a aria-hidden="true" href="#cb3-11" tabindex="-1"></a></span>
+<span id="cb3-12"><a aria-hidden="true" href="#cb3-12" tabindex="-1"></a>        <span class="cf">try</span> {</span>
+<span id="cb3-13"><a aria-hidden="true" href="#cb3-13" tabindex="-1"></a>            <span class="kw">var</span> id <span class="op">=</span> lookup[<span class="dv">0</span>]<span class="op">.</span><span class="at">id</span><span class="op">.</span><span class="fu">replace</span>(<span class="ss">/</span><span class="sc">[{}]</span><span class="ss">/g</span><span class="op">,</span> <span class="st">""</span>)<span class="op">;</span></span>
+<span id="cb3-14"><a aria-hidden="true" href="#cb3-14" tabindex="-1"></a>            <span class="kw">var</span> product <span class="op">=</span> <span class="cf">await</span> Xrm<span class="op">.</span><span class="at">WebApi</span><span class="op">.</span><span class="fu">retrieveRecord</span>(<span class="st">"new_loanproduct"</span><span class="op">,</span> id<span class="op">,</span> <span class="st">"?$select=new_maxtenuremonths"</span>)<span class="op">;</span></span>
+<span id="cb3-15"><a aria-hidden="true" href="#cb3-15" tabindex="-1"></a>            <span class="cf">if</span> (product<span class="op">.</span><span class="at">new_maxtenuremonths</span>) {</span>
+<span id="cb3-16"><a aria-hidden="true" href="#cb3-16" tabindex="-1"></a>                tenure<span class="op">.</span><span class="fu">setNotification</span>(<span class="st">"Maximum for this product: "</span> <span class="op">+</span> product<span class="op">.</span><span class="at">new_maxtenuremonths</span> <span class="op">+</span> <span class="st">" months."</span><span class="op">,</span> <span class="st">"max-tenure"</span>)<span class="op">;</span></span>
+<span id="cb3-17"><a aria-hidden="true" href="#cb3-17" tabindex="-1"></a>            }</span>
+<span id="cb3-18"><a aria-hidden="true" href="#cb3-18" tabindex="-1"></a>        } <span class="cf">catch</span> (e) {</span>
+<span id="cb3-19"><a aria-hidden="true" href="#cb3-19" tabindex="-1"></a>            <span class="bu">console</span><span class="op">.</span><span class="fu">error</span>(<span class="st">"LoanHub.Product: could not read product"</span><span class="op">,</span> e)<span class="op">;</span></span>
+<span id="cb3-20"><a aria-hidden="true" href="#cb3-20" tabindex="-1"></a>        }</span>
+<span id="cb3-21"><a aria-hidden="true" href="#cb3-21" tabindex="-1"></a>    }</span>
+<span id="cb3-22"><a aria-hidden="true" href="#cb3-22" tabindex="-1"></a></span>
+<span id="cb3-23"><a aria-hidden="true" href="#cb3-23" tabindex="-1"></a>    <span class="cf">return</span> { <span class="dt">onProductChange</span><span class="op">:</span> onProductChange }<span class="op">;</span></span>
+<span id="cb3-24"><a aria-hidden="true" href="#cb3-24" tabindex="-1"></a>})()<span class="op">;</span></span></code></pre></div>
+<p><code>Xrm.WebApi</code> is <strong>asynchronous</strong>: the form
+stays responsive while the request runs. Old scripts using synchronous
+<code>XMLHttpRequest</code> freeze the browser for every call.</p>
+<h3 id="day-2-what-actually-goes-wrong-in-production">Day 2: what
+actually goes wrong in production</h3>
+<h4 id="1-also-hide-the-guarantor-section">1. "Also hide the Guarantor
+section"</h4>
+<p><strong>What you see:</strong> the business rule designer has no
+option for sections.</p>
+<p><strong>Why it happens:</strong> business rules work on fields, not
+on tabs or sections.</p>
+<p><strong>How to handle it:</strong> use JavaScript
+(<code>section.setVisible</code>), as in Implementation 3. Keep simple
+field rules in business rules, and move to JavaScript only when you hit
+a limit.</p>
+<h4 id="2-co-applicant-is-required-on-the-form-but-empty-after-an-import">2.
+Co-applicant is required on the form, but empty after an import</h4>
+<p><strong>What you see:</strong> the form never allows it, yet the
+table has hundreds of loans without a co-applicant.</p>
+<p><strong>Why it happens:</strong> "Set business required" is a form
+behaviour. Imports and the API don't open the form.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Change the rule to <strong>Entity</strong> scope with an
+<strong>error message</strong> condition (Implementation 1), or</li>
+<li>Add a plugin that rejects the save (Part 3B).</li>
+<li>Clean up the existing bad rows with a report and a correction
+plan.</li>
+</ol>
+<h4 id="3-the-form-rejects-bad-pans-but-the-table-is-full-of-them">3.
+The form rejects bad PANs, but the table is full of them</h4>
+<p><strong>What you see:</strong> users can't enter a bad PAN, but the
+integration did.</p>
+<p><strong>Why it happens:</strong> the integration uses the Web API, so
+the JavaScript never ran.</p>
+<p><strong>How to handle it:</strong> put the same check in a plugin,
+keep the JavaScript for instant feedback, and keep the pattern in one
+place in each (a constant) so they don't drift apart.</p>
+<h4 id="4-a-field-is-removed-from-the-form-and-every-load-shows-a-script-error">4.
+A field is removed from the form, and every load shows a script
+error</h4>
+<p><strong>What you see:</strong> "Cannot read properties of null
+(reading 'getValue')" when the form opens.</p>
+<p><strong>Why it happens:</strong> <code>getAttribute("new_pan")</code>
+returns <strong>null</strong> when the column isn't on the form, and the
+script calls a method on null.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Guard every <code>getAttribute</code> and <code>getControl</code>
+call, as in the examples.</li>
+<li>Before removing a field, search your scripts and business rules for
+its logical name.</li>
+</ol>
+<h4 id="5-old-scripts-still-use-xrmpage">5. Old scripts still use
+Xrm.Page</h4>
+<p><strong>What you see:</strong> scripts that work today, written years
+ago with <code>Xrm.Page.getAttribute(...)</code>.</p>
+<p><strong>Why it happens:</strong> <code>Xrm.Page</code> was the old
+way to reach the form. It's deprecated.</p>
+<p><strong>How to handle it:</strong> refactor to take
+<code>executionContext</code> as the first parameter and use
+<code>getFormContext()</code>. Do it table by table, testing each
+form.</p>
+<h4 id="6-the-form-freezes-for-a-few-seconds-on-load">6. The form
+freezes for a few seconds on load</h4>
+<p><strong>What you see:</strong> the form opens, then the browser stops
+responding briefly.</p>
+<p><strong>Why it happens:</strong> usually a
+<strong>synchronous</strong> request in an OnLoad script, or many
+requests one after another.</p>
+<p><strong>How to handle it:</strong></p>
+<ol type="1">
+<li>Use <code>Xrm.WebApi</code> (async) and <code>await</code>, never
+synchronous <code>XMLHttpRequest</code>.</li>
+<li>Load only the columns you need with <code>$select</code>.</li>
+<li>Measure with the browser's Network tab and the form Monitor (see the
+debugging section).</li>
+</ol>
+<h4 id="7-a-business-rule-and-a-script-fight-over-the-same-field">7. A
+business rule and a script fight over the same field</h4>
+<p><strong>What you see:</strong> a field flickers between visible and
+hidden, or a value set by script is overwritten.</p>
+<p><strong>Why it happens:</strong> two pieces of logic own the same
+field, and they run at different moments.</p>
+<p><strong>How to handle it:</strong> decide <strong>one owner per
+field</strong>. If the logic outgrew the business rule, move all of it
+to JavaScript and deactivate the rule.</p>
+<h3 id="how-to-debug-form-logic">How to debug form logic</h3>
+<ol type="1">
+<li><strong>Is it running at all?</strong> Open the browser's DevTools
+(F12), go to <strong>Sources</strong>, find your web resource, and add a
+breakpoint. Or add <code>debugger;</code> temporarily.</li>
+<li><strong>Is it something else on the form?</strong> Add
+<code>&amp;flags=DisableFormHandlers=true</code> to the app URL. This
+turns off form event handlers, including business rules, for your
+session only. If the problem disappears, it's form logic.</li>
+<li><strong>Which handler ran, and in what order?</strong> Add
+<code>&amp;monitor=true</code> to the URL and open
+<strong>Monitor</strong>. It shows form events, handlers, business rules
+and timings.</li>
+<li><strong>Is the data right?</strong> Check the Network tab for Web
+API calls and their responses.</li>
+<li><strong>Is it cached?</strong> After publishing a web resource, do a
+hard refresh. A cached old version is a common "my fix didn't
+work".</li>
+</ol>
+<h3 id="using-ai-with-business-rules-and-javascript">Using AI with
+business rules and JavaScript</h3>
+<h4 id="ai-to-write-the-first-draft">AI to write the first draft</h4>
+<pre class="text"><code>Write a Dynamics 365 model-driven app form script in plain JavaScript
+(no TypeScript, no Xrm.Page). Use a namespace LoanHub.Validation and
+executionContext.getFormContext(). On change of new_pan, normalise to
+upper case, validate /^[A-Z]{5}[0-9]{4}[A-Z]$/, and show a field
+notification. Guard against the field not being on the form.</code></pre>
+<h4 id="ai-as-a-reviewer">AI as a reviewer</h4>
+<pre class="text"><code>Review this Dynamics 365 form script. List: uses of deprecated APIs,
+missing null checks, synchronous requests, notifications that are
+never cleared, and any rule that must also be enforced on the server.</code></pre>
+<h4 id="where-ai-goes-wrong-here">Where AI goes wrong here</h4>
+<ul>
+<li>It still writes <code>Xrm.Page</code> often, because so much old
+sample code uses it.</li>
+<li>It invents logical names (<code>pan</code> instead of
+<code>new_pan</code>) and choice values. Check every name against your
+table.</li>
+<li>It treats form validation as enough. Always ask it: "how does this
+rule hold for imports and the API?"</li>
+</ul>
+<h3 id="checklist">Checklist</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"/>Each rule classified: form help
+only, or must hold everywhere</label></li>
+<li><label><input type="checkbox"/>Rules that must hold everywhere also
+have a server-side guard</label></li>
+<li><label><input type="checkbox"/>Business rules with server effects
+use <strong>Entity</strong> scope and error messages</label></li>
+<li><label><input type="checkbox"/>JavaScript in a namespace, using
+<code>getFormContext()</code>, no <code>Xrm.Page</code></label></li>
+<li><label><input type="checkbox"/>Every
+<code>getAttribute</code>/<code>getControl</code> guarded for
+null</label></li>
+<li><label><input type="checkbox"/>Only async calls
+(<code>Xrm.WebApi</code>), with <code>$select</code></label></li>
+<li><label><input type="checkbox"/>One owner per field: business rule
+or script, not both</label></li>
+<li><label><input type="checkbox"/>Tested on every form of the table,
+and through an import</label></li>
+</ul>
+<h3 id="interview-questions-with-the-answers-that-land">Interview
+questions, with the answers that land</h3>
+<p><strong>1. What changes when a business rule's scope is Entity
+instead of All Forms?</strong></p>
+<p>With Entity scope the rule also runs on the server, so its error
+messages and set-value actions apply to imports and API calls. Show,
+hide, lock and required are still form-only effects.</p>
+<p><strong>2. Why isn't JavaScript validation enough for a compliance
+rule?</strong></p>
+<p>JavaScript only runs in a form. Imports, flows, integrations and the
+Web API never load one, so the rule needs a server-side guard such as a
+plugin.</p>
+<p><strong>3. Why does getAttribute sometimes return null?</strong></p>
+<p>Because the column isn't on the current form. Scripts must check for
+null before calling methods on it.</p>
+<p><strong>4. How do you stop a save from JavaScript?</strong></p>
+<p>In an OnSave handler registered with the execution context, call
+<code>executionContext.getEventArgs().preventDefault()</code> and show a
+notification explaining why.</p>
+<p><strong>5. A form freezes on load. What do you check
+first?</strong></p>
+<p>Synchronous requests in OnLoad scripts. I'd switch them to
+<code>Xrm.WebApi</code> with async/await and <code>$select</code>, then
+measure with the Network tab and Monitor.</p>
+<h3 id="rule-of-thumb">Rule of thumb</h3>
+<p><strong>Start with a business rule, move to JavaScript when you hit a
+limit, and never rely on either one alone for data that has to stay
+clean.</strong></p>
+<p><strong>Next:</strong> Part 3B, the server side. Plugins and Power
+Automate.</p>
+<hr/><p><em>Originally published on my blog, with the full series: <a href="https://krish8714.github.io">krish8714.github.io</a></em></p></body></html>
