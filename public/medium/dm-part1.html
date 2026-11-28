@@ -1,0 +1,403 @@
+<!doctype html><html><head><meta name="robots" content="noindex"><meta charset="utf-8"><title>CRM Data Migration, Part 1: "Just Migrate Everything"</title></head><body><h1>CRM Data Migration, Part 1: "Just Migrate Everything"</h1>
+<p><em>Part 1 of my series CRM Data Migration: From Legacy to Dataverse.
+One lending bank, one real migration, from the first meeting to the
+go-live weekend. We use SQL Server, SSIS, KingswaySoft and Azure Data
+Factory.</em></p>
+<p><em>New to SQL? A beginner part, SQL for CRM people, is coming next
+in this series, and it explains queries like the ones below from
+zero.</em></p>
+<blockquote>
+<p><strong>"Just move all the data" is not a plan. It means nobody has
+made a plan yet.</strong></p>
+</blockquote>
+<h3 id="the-story-12-years-of-data-and-one-sentence">The story: 12 years
+of data and one sentence</h3>
+<p>The lending bank from my other series is replacing its 12-year-old
+CRM with Dynamics 365. In the first migration meeting, the business
+owner says one sentence:</p>
+<p><strong>"Just migrate everything. We don't want to lose
+anything."</strong></p>
+<p>It sounds safe. But when we look at what "everything" really means,
+we find this:</p>
+<ul><li><strong>Customers</strong> — Rows: 610,000; What is really inside: About one third had no loan, call or email in the last 7+ years</li><li><strong>Loan applications</strong> — Rows: 1,150,000; What is really inside: 88% are closed. Many are "Draft" loans nobody finished</li><li><strong>Call notes</strong> — Rows: 1,900,000; What is really inside: Free text. Some notes have PAN and bank details typed inside</li><li><strong>Documents</strong> — Rows: 420,000 files, 2.3 TB; What is really inside: Scanned KYC documents. Many are copies of the same file</li><li><strong>Users</strong> — Rows: 1,240; What is really inside: Only 300 still work at the bank</li><li><strong>Audit log</strong> — Rows: 38,000,000; What is really inside: Every field change since 2014</li></ul>
+<p>If we move "everything":</p>
+<ul>
+<li>The data load takes <strong>days</strong>, not hours. A go-live
+weekend cannot fit that.</li>
+<li>The bank pays for Dataverse <strong>storage</strong> for records
+nobody will open.</li>
+<li>We bring in <strong>940 users who left</strong> the bank.</li>
+<li>We copy <strong>sensitive data</strong> (PAN, bank details in notes)
+into a new system. That creates a new compliance problem.</li>
+<li>And the audit log <strong>still cannot</strong> come in as real
+audit history, because Dataverse does not allow you to create audit
+records.</li>
+</ul>
+<p>So the real risk in that meeting was not losing data. <strong>The
+real risk was that nobody had decided what the data is needed
+for.</strong></p>
+<p>In this part, you will learn how to turn "everything" into a clear
+plan that the business signs. We do it by checking the data in a SQL
+Server copy.</p>
+<h3 id="the-change-in-thinking">The change in thinking</h3>
+<p>Don't ask: "What data do we have?"</p>
+<p>Ask: <strong>"What will people need to do with this data on the first
+Monday after go-live? And in five years?"</strong></p>
+<p>Then put every record into one of three groups:</p>
+<ul><li><strong><strong>Move</strong></strong> — What it means: People will work on it in Dynamics 365; Examples: Active customers, open loans, recently closed loans, current lookup
+data; Where it lives after go-live: Dataverse</li><li><strong><strong>Archive</strong></strong> — What it means: We must keep it and find it, but nobody will change it; Examples: Old closed loans, old call notes, old documents, audit history; Where it lives after go-live: A read-only store: Azure SQL, a data lake, or a report that users
+can search</li><li><strong><strong>Leave behind</strong></strong> — What it means: There is no business or legal reason to keep it; Examples: Unfinished drafts, test records, duplicates, data older than the
+retention period; Where it lives after go-live: Nowhere. It is deleted after sign-off, as per the retention
+policy</li></ul>
+<p><strong>The migration team does not choose the group. The business
+chooses, using facts from the migration team.</strong> Your job in Part
+1 is to give them those facts.</p>
+<p><strong>One more thing.</strong> Microsoft splits data into two
+kinds:</p>
+<ul>
+<li><strong>Setup data</strong> (configuration data): things like
+currencies, branches, products and lookup values. This sets up the
+system.</li>
+<li><strong>Migration data</strong>: things like customers, loans and
+notes, which come from the old system.</li>
+</ul>
+<p>This series is about migration data. Setup data is loaded separately,
+before migration starts, usually with solutions or the Configuration
+Migration tool.</p>
+<h3 id="the-basics-in-simple-words">The basics in simple words</h3>
+<h4 id="why-more-data-is-not-free">Why more data is not free</h4>
+<ul><li><strong>Longer loads</strong> — Why: Dataverse only accepts a limited number of requests at a time. Your
+server's speed does not change that. Millions of rows with their links
+take many hours</li><li><strong>Higher cost</strong> — Why: Dataverse charges for database and file storage. Records you never
+open still take space</li><li><strong>Slower system</strong> — Why: Bigger tables can make views, searches and reports slower</li><li><strong>More risk</strong> — Why: Every extra row is one more chance of a broken link, a wrong value,
+or sensitive data moved by mistake</li><li><strong>Longer go-live weekend</strong> — Why: The final load and the final checks must finish while the old system
+is frozen (no new changes allowed)</li></ul>
+<h4 id="what-profiling-means">What "profiling" means</h4>
+<p>Profiling means <strong>measuring the data before you decide
+anything</strong>:</p>
+<ul>
+<li>How many rows?</li>
+<li>How old?</li>
+<li>How complete? (Are important fields empty?)</li>
+<li>How many duplicates?</li>
+<li>How much is still in use?</li>
+</ul>
+<p>You always do this on a <strong>copy</strong> of the data in a
+separate database (we call it "staging"). Never on the live old
+system.</p>
+<h4 id="what-cannot-move-as-it-is">What cannot move as it is</h4>
+<ul>
+<li><strong>Audit history</strong> cannot be written into Dataverse's
+audit tables. If the bank must keep it, it goes to the archive. If users
+must see it on the record, we can use a custom history table.</li>
+<li><strong>Users who have left</strong> cannot simply own records like
+active users. We handle owners in Part 2.</li>
+<li><strong>"Created on" and "Created by"</strong> dates need special
+steps to keep their original values. We cover that in Part 4.</li>
+</ul>
+<p>When the business knows these limits early, they don't expect
+something the platform cannot do.</p>
+<h3 id="step-1-make-a-copy-and-count-everything">Step 1: make a copy and
+count everything</h3>
+<p>Never profile the live old system. Two reasons:</p>
+<ol type="1">
+<li>Your queries will slow it down for users who still work in it.</li>
+<li>The data keeps changing while you measure it.</li>
+</ol>
+<p><strong>Steps:</strong></p>
+<ol type="1">
+<li>Create a SQL Server database called <strong>LendingStaging</strong>,
+with a schema <code>src</code> for the raw copy.</li>
+<li>Copy the old tables into <code>src</code> exactly as they are (using
+SSIS, an ADF Copy activity, or a backup restore). Don't change anything
+yet.</li>
+<li>Count the rows and size of every table:</li>
+</ol>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb1-1"><a aria-hidden="true" href="#cb1-1" tabindex="-1"></a><span class="co">-- Rows and size of every table in the raw copy</span></span>
+<span id="cb1-2"><a aria-hidden="true" href="#cb1-2" tabindex="-1"></a><span class="kw">SELECT</span>  s.name  <span class="kw">AS</span> schema_name,</span>
+<span id="cb1-3"><a aria-hidden="true" href="#cb1-3" tabindex="-1"></a>        t.name  <span class="kw">AS</span> table_name,</span>
+<span id="cb1-4"><a aria-hidden="true" href="#cb1-4" tabindex="-1"></a>        <span class="fu">SUM</span>(p.<span class="kw">rows</span>) <span class="kw">AS</span> row_count,</span>
+<span id="cb1-5"><a aria-hidden="true" href="#cb1-5" tabindex="-1"></a>        <span class="fu">CAST</span>(<span class="fu">SUM</span>(a.total_pages) <span class="op">*</span> <span class="dv">8</span> <span class="op">/</span> <span class="fl">1024.0</span> <span class="kw">AS</span> <span class="dt">DECIMAL</span>(<span class="dv">12</span>,<span class="dv">1</span>)) <span class="kw">AS</span> size_mb</span>
+<span id="cb1-6"><a aria-hidden="true" href="#cb1-6" tabindex="-1"></a><span class="kw">FROM</span>    sys.<span class="kw">tables</span> t</span>
+<span id="cb1-7"><a aria-hidden="true" href="#cb1-7" tabindex="-1"></a><span class="kw">JOIN</span>    sys.schemas s          <span class="kw">ON</span> s.schema_id <span class="op">=</span> t.schema_id</span>
+<span id="cb1-8"><a aria-hidden="true" href="#cb1-8" tabindex="-1"></a><span class="kw">JOIN</span>    sys.<span class="kw">partitions</span> p       <span class="kw">ON</span> p.object_id <span class="op">=</span> t.object_id <span class="kw">AND</span> p.index_id <span class="kw">IN</span> (<span class="dv">0</span>,<span class="dv">1</span>)</span>
+<span id="cb1-9"><a aria-hidden="true" href="#cb1-9" tabindex="-1"></a><span class="kw">JOIN</span>    sys.allocation_units a <span class="kw">ON</span> a.container_id <span class="op">=</span> p.partition_id</span>
+<span id="cb1-10"><a aria-hidden="true" href="#cb1-10" tabindex="-1"></a><span class="kw">WHERE</span>   s.name <span class="op">=</span> <span class="st">'src'</span></span>
+<span id="cb1-11"><a aria-hidden="true" href="#cb1-11" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> s.name, t.name</span>
+<span id="cb1-12"><a aria-hidden="true" href="#cb1-12" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> row_count <span class="kw">DESC</span>;</span></code></pre></div>
+<p>This one query usually ends the "how big can it be?" discussion.</p>
+<h3 id="step-2-find-out-what-is-really-in-use">Step 2: find out what is
+really in use</h3>
+<p>For each main table, ask one question: <strong>how much of it was
+used recently?</strong></p>
+<p><strong>Customers, grouped by their last activity:</strong></p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb2-1"><a aria-hidden="true" href="#cb2-1" tabindex="-1"></a><span class="co">-- When did we last do anything with each customer?</span></span>
+<span id="cb2-2"><a aria-hidden="true" href="#cb2-2" tabindex="-1"></a><span class="kw">WITH</span> last_touch <span class="kw">AS</span> (</span>
+<span id="cb2-3"><a aria-hidden="true" href="#cb2-3" tabindex="-1"></a>    <span class="kw">SELECT</span> c.customer_id,</span>
+<span id="cb2-4"><a aria-hidden="true" href="#cb2-4" tabindex="-1"></a>           (<span class="kw">SELECT</span> <span class="fu">MAX</span>(d) <span class="kw">FROM</span> (<span class="kw">VALUES</span></span>
+<span id="cb2-5"><a aria-hidden="true" href="#cb2-5" tabindex="-1"></a>                (c.modified_on),</span>
+<span id="cb2-6"><a aria-hidden="true" href="#cb2-6" tabindex="-1"></a>                ((<span class="kw">SELECT</span> <span class="fu">MAX</span>(l.modified_on) <span class="kw">FROM</span> src.loan_application l <span class="kw">WHERE</span> l.customer_id <span class="op">=</span> c.customer_id)),</span>
+<span id="cb2-7"><a aria-hidden="true" href="#cb2-7" tabindex="-1"></a>                ((<span class="kw">SELECT</span> <span class="fu">MAX</span>(n.created_on)  <span class="kw">FROM</span> src.call_note n        <span class="kw">WHERE</span> n.customer_id <span class="op">=</span> c.customer_id))</span>
+<span id="cb2-8"><a aria-hidden="true" href="#cb2-8" tabindex="-1"></a>           ) <span class="kw">AS</span> v(d)) <span class="kw">AS</span> last_activity</span>
+<span id="cb2-9"><a aria-hidden="true" href="#cb2-9" tabindex="-1"></a>    <span class="kw">FROM</span> src.customer c</span>
+<span id="cb2-10"><a aria-hidden="true" href="#cb2-10" tabindex="-1"></a>)</span>
+<span id="cb2-11"><a aria-hidden="true" href="#cb2-11" tabindex="-1"></a><span class="kw">SELECT</span> <span class="cf">CASE</span></span>
+<span id="cb2-12"><a aria-hidden="true" href="#cb2-12" tabindex="-1"></a>         <span class="cf">WHEN</span> last_activity <span class="op">&gt;=</span> DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">2</span>, GETDATE()) <span class="cf">THEN</span> <span class="st">'1. Last 2 years'</span></span>
+<span id="cb2-13"><a aria-hidden="true" href="#cb2-13" tabindex="-1"></a>         <span class="cf">WHEN</span> last_activity <span class="op">&gt;=</span> DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">5</span>, GETDATE()) <span class="cf">THEN</span> <span class="st">'2. 2-5 years'</span></span>
+<span id="cb2-14"><a aria-hidden="true" href="#cb2-14" tabindex="-1"></a>         <span class="cf">WHEN</span> last_activity <span class="op">&gt;=</span> DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">7</span>, GETDATE()) <span class="cf">THEN</span> <span class="st">'3. 5-7 years'</span></span>
+<span id="cb2-15"><a aria-hidden="true" href="#cb2-15" tabindex="-1"></a>         <span class="cf">ELSE</span> <span class="st">'4. Over 7 years'</span></span>
+<span id="cb2-16"><a aria-hidden="true" href="#cb2-16" tabindex="-1"></a>       <span class="cf">END</span> <span class="kw">AS</span> activity_band,</span>
+<span id="cb2-17"><a aria-hidden="true" href="#cb2-17" tabindex="-1"></a>       <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> customers</span>
+<span id="cb2-18"><a aria-hidden="true" href="#cb2-18" tabindex="-1"></a><span class="kw">FROM</span> last_touch</span>
+<span id="cb2-19"><a aria-hidden="true" href="#cb2-19" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> <span class="cf">CASE</span></span>
+<span id="cb2-20"><a aria-hidden="true" href="#cb2-20" tabindex="-1"></a>         <span class="cf">WHEN</span> last_activity <span class="op">&gt;=</span> DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">2</span>, GETDATE()) <span class="cf">THEN</span> <span class="st">'1. Last 2 years'</span></span>
+<span id="cb2-21"><a aria-hidden="true" href="#cb2-21" tabindex="-1"></a>         <span class="cf">WHEN</span> last_activity <span class="op">&gt;=</span> DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">5</span>, GETDATE()) <span class="cf">THEN</span> <span class="st">'2. 2-5 years'</span></span>
+<span id="cb2-22"><a aria-hidden="true" href="#cb2-22" tabindex="-1"></a>         <span class="cf">WHEN</span> last_activity <span class="op">&gt;=</span> DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">7</span>, GETDATE()) <span class="cf">THEN</span> <span class="st">'3. 5-7 years'</span></span>
+<span id="cb2-23"><a aria-hidden="true" href="#cb2-23" tabindex="-1"></a>         <span class="cf">ELSE</span> <span class="st">'4. Over 7 years'</span></span>
+<span id="cb2-24"><a aria-hidden="true" href="#cb2-24" tabindex="-1"></a>       <span class="cf">END</span></span>
+<span id="cb2-25"><a aria-hidden="true" href="#cb2-25" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> activity_band;</span></code></pre></div>
+<p><strong>Loans, grouped by status and age:</strong></p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a aria-hidden="true" href="#cb3-1" tabindex="-1"></a><span class="kw">SELECT</span> status,</span>
+<span id="cb3-2"><a aria-hidden="true" href="#cb3-2" tabindex="-1"></a>       <span class="fu">SUM</span>(<span class="cf">CASE</span> <span class="cf">WHEN</span> closed_on <span class="kw">IS</span> <span class="kw">NULL</span>                              <span class="cf">THEN</span> <span class="dv">1</span> <span class="cf">ELSE</span> <span class="dv">0</span> <span class="cf">END</span>) <span class="kw">AS</span> still_open,</span>
+<span id="cb3-3"><a aria-hidden="true" href="#cb3-3" tabindex="-1"></a>       <span class="fu">SUM</span>(<span class="cf">CASE</span> <span class="cf">WHEN</span> closed_on <span class="op">&gt;=</span> DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">3</span>, GETDATE())      <span class="cf">THEN</span> <span class="dv">1</span> <span class="cf">ELSE</span> <span class="dv">0</span> <span class="cf">END</span>) <span class="kw">AS</span> closed_last_3y,</span>
+<span id="cb3-4"><a aria-hidden="true" href="#cb3-4" tabindex="-1"></a>       <span class="fu">SUM</span>(<span class="cf">CASE</span> <span class="cf">WHEN</span> closed_on <span class="op">&lt;</span>  DATEADD(<span class="dt">YEAR</span>, <span class="op">-</span><span class="dv">3</span>, GETDATE())      <span class="cf">THEN</span> <span class="dv">1</span> <span class="cf">ELSE</span> <span class="dv">0</span> <span class="cf">END</span>) <span class="kw">AS</span> closed_older,</span>
+<span id="cb3-5"><a aria-hidden="true" href="#cb3-5" tabindex="-1"></a>       <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> total</span>
+<span id="cb3-6"><a aria-hidden="true" href="#cb3-6" tabindex="-1"></a><span class="kw">FROM</span> src.loan_application</span>
+<span id="cb3-7"><a aria-hidden="true" href="#cb3-7" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> status</span>
+<span id="cb3-8"><a aria-hidden="true" href="#cb3-8" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> total <span class="kw">DESC</span>;</span></code></pre></div>
+<p><strong>Empty fields and duplicates in the columns the business cares
+about:</strong></p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb4-1"><a aria-hidden="true" href="#cb4-1" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">COUNT</span>(<span class="op">*</span>)                                                   <span class="kw">AS</span> customers,</span>
+<span id="cb4-2"><a aria-hidden="true" href="#cb4-2" tabindex="-1"></a>       <span class="fu">SUM</span>(<span class="cf">CASE</span> <span class="cf">WHEN</span> pan <span class="kw">IS</span> <span class="kw">NULL</span> <span class="kw">OR</span> pan <span class="op">=</span> <span class="st">''</span> <span class="cf">THEN</span> <span class="dv">1</span> <span class="cf">ELSE</span> <span class="dv">0</span> <span class="cf">END</span>)  <span class="kw">AS</span> missing_pan,</span>
+<span id="cb4-3"><a aria-hidden="true" href="#cb4-3" tabindex="-1"></a>       <span class="fu">SUM</span>(<span class="cf">CASE</span> <span class="cf">WHEN</span> pan <span class="kw">IS</span> <span class="kw">NOT</span> <span class="kw">NULL</span></span>
+<span id="cb4-4"><a aria-hidden="true" href="#cb4-4" tabindex="-1"></a>                 <span class="kw">AND</span> pan <span class="kw">NOT</span> <span class="kw">LIKE</span> <span class="st">'[A-Z][A-Z][A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][A-Z]'</span></span>
+<span id="cb4-5"><a aria-hidden="true" href="#cb4-5" tabindex="-1"></a>                <span class="cf">THEN</span> <span class="dv">1</span> <span class="cf">ELSE</span> <span class="dv">0</span> <span class="cf">END</span>)                        <span class="kw">AS</span> invalid_pan,</span>
+<span id="cb4-6"><a aria-hidden="true" href="#cb4-6" tabindex="-1"></a>       <span class="fu">SUM</span>(<span class="cf">CASE</span> <span class="cf">WHEN</span> mobile <span class="kw">IS</span> <span class="kw">NULL</span> <span class="kw">OR</span> mobile <span class="op">=</span> <span class="st">''</span> <span class="cf">THEN</span> <span class="dv">1</span> <span class="cf">ELSE</span> <span class="dv">0</span> <span class="cf">END</span>) <span class="kw">AS</span> missing_mobile,</span>
+<span id="cb4-7"><a aria-hidden="true" href="#cb4-7" tabindex="-1"></a>       <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="op">-</span> <span class="fu">COUNT</span>(<span class="kw">DISTINCT</span> <span class="fu">NULLIF</span>(pan, <span class="st">''</span>))          <span class="kw">AS</span> rows_sharing_a_pan</span>
+<span id="cb4-8"><a aria-hidden="true" href="#cb4-8" tabindex="-1"></a><span class="kw">FROM</span> src.customer;</span></code></pre></div>
+<p><strong>Owners who have left the bank:</strong></p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb5-1"><a aria-hidden="true" href="#cb5-1" tabindex="-1"></a><span class="kw">SELECT</span> u.is_active, <span class="fu">COUNT</span>(<span class="kw">DISTINCT</span> u.user_id) <span class="kw">AS</span> users, <span class="fu">COUNT</span>(l.loan_id) <span class="kw">AS</span> loans_owned</span>
+<span id="cb5-2"><a aria-hidden="true" href="#cb5-2" tabindex="-1"></a><span class="kw">FROM</span> src.app_user u</span>
+<span id="cb5-3"><a aria-hidden="true" href="#cb5-3" tabindex="-1"></a><span class="kw">LEFT</span> <span class="kw">JOIN</span> src.loan_application l <span class="kw">ON</span> l.owner_id <span class="op">=</span> u.user_id</span>
+<span id="cb5-4"><a aria-hidden="true" href="#cb5-4" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> u.is_active;</span></code></pre></div>
+<p>Put all the results in one <strong>profiling workbook</strong> (an
+Excel file): one tab per table, the numbers, and one simple line saying
+"what this means" for business readers.</p>
+<h3 id="step-3-write-simple-rules-the-business-can-sign">Step 3: write
+simple rules the business can sign</h3>
+<p>Now turn the numbers into rules. Write them in business words, and
+put a row count next to each rule:</p>
+<ul><li><strong>Customers</strong> — Rule: Any activity in the last 5 years, or any open loan; Rows: e.g. 395,000 of 610,000; Group: Move</li><li><strong>Customers</strong> — Rule: No activity for 5+ years and no open loan; Rows: e.g. 215,000; Group: Archive</li><li><strong>Loans</strong> — Rule: Open, or closed in the last 3 years; Rows: e.g. 290,000; Group: Move</li><li><strong>Loans</strong> — Rule: Closed more than 3 years ago; Rows: e.g. 760,000; Group: Archive</li><li><strong>Loans</strong> — Rule: Status "Draft", not touched for 1+ year; Rows: e.g. 100,000; Group: Leave behind (after sign-off)</li><li><strong>Call notes</strong> — Rule: Linked to loans we move, from the last 3 years; Rows: e.g. 400,000; Group: Move</li><li><strong>Documents</strong> — Rule: Latest version of each document type, for loans we move; Rows: e.g. 180,000 files; Group: Move</li><li><strong>Audit log</strong> — Rule: All of it; Rows: 38,000,000; Group: Archive</li></ul>
+<p><em>(These numbers are examples to show what your workbook will look
+like. Use your own results.)</em></p>
+<p><strong>Three tips for writing rules:</strong></p>
+<ul>
+<li>Use <strong>business events</strong> (last activity, open, closed).
+Don't use technical dates like "row created in the old system".</li>
+<li>Put a <strong>row count</strong> next to every rule. Without
+numbers, nobody can see what each choice costs.</li>
+<li>Every "leave behind" rule needs a <strong>named person</strong> who
+signs it, and a check against the bank's <strong>retention
+policy</strong> (how long data must be kept by law).</li>
+</ul>
+<h3 id="step-4-decide-where-the-archive-lives">Step 4: decide where the
+archive lives</h3>
+<p>Archived does not mean lost. When a customer calls about an old loan,
+users must be able to find it.</p>
+<ul><li><strong>Keep the cleaned staging tables in <strong>Azure SQL</strong>,
+read-only, with a simple report</strong> — Good when: Small team, people look things up only sometimes; Be careful about: Someone must own it and pay for it</li><li><strong>Load the archive into a <strong>data lake</strong> and show it
+through Power BI</strong> — Good when: The bank already has a data platform; Be careful about: Who can see sensitive data</li><li><strong>A <strong>custom history table</strong> in Dataverse with only
+summary fields</strong> — Good when: Users need to see "previous loans" on the customer form; Be careful about: It still uses Dataverse storage, so keep it small</li><li><strong>A <strong>virtual table</strong> in Dataverse that reads the archive
+from Azure SQL</strong> — Good when: Users want to see old loans inside Dynamics, without moving
+them; Be careful about: The data is read-only and can be slower to open. Test it with real
+users first</li></ul>
+<h3 id="step-5-get-the-plan-signed">Step 5: get the plan signed</h3>
+<p>Before any mapping work starts, make a one-page <strong>Migration
+Scope Agreement</strong>. It contains:</p>
+<ol type="1">
+<li>The three groups for each table, with the rules and row counts.</li>
+<li>Where archived data will live, and how users will find it.</li>
+<li>What cannot move as it is (audit history, users who left), and the
+agreed alternative.</li>
+<li>Signatures from the business owner, compliance, and the migration
+lead.</li>
+</ol>
+<p>Four months later, when someone asks "Why didn't my 2014 notes come
+across?", this page is your answer.</p>
+<h3 id="day-2-what-goes-wrong-when-you-skip-this-step">Day 2: what goes
+wrong when you skip this step</h3>
+<h4 id="1-the-storage-bill-arrives">1. The storage bill arrives</h4>
+<p><strong>What you see:</strong> a month after go-live, the admin
+center shows that you are over your database or file storage limit.
+Someone asks for more budget.</p>
+<p><strong>Why it happens:</strong> everything was moved, including
+documents, notes and closed loans that nobody opens. Files and
+attachments fill up file storage very fast.</p>
+<p><strong>How to fix it:</strong></p>
+<ol type="1">
+<li>In the admin center, check storage by table to see what is using the
+space.</li>
+<li>Move old documents to SharePoint or Azure storage, and keep a link
+on the record.</li>
+<li>For the next migration wave, apply the archive rules from Step 3
+before loading.</li>
+</ol>
+<h4 id="2-the-test-load-takes-60-hours">2. The test load takes 60
+hours</h4>
+<p><strong>What you see:</strong> the first full test load runs for more
+than two days. But the go-live window is one weekend.</p>
+<p><strong>Why it happens:</strong> nobody reduced the number of rows.
+And every record has links (lookups and relationships), which add even
+more work.</p>
+<p><strong>How to fix it:</strong> first reduce the volume (using the
+rules from Step 3). Then make the load faster (batches, running loads in
+parallel, bypassing custom plug-ins only for the load requests, which is
+a supported option and doesn't affect other users). Speed tuning alone
+rarely fixes a gap this big. Part 6 covers performance.</p>
+<h4 id="3-where-are-my-old-notes">3. "Where are my old notes?"</h4>
+<p><strong>What you see:</strong> after go-live, a relationship manager
+cannot find a customer's call notes from 2016.</p>
+<p><strong>Why it happens:</strong> the notes were correctly archived.
+But nobody told users where the archive is, or gave them access.</p>
+<p><strong>How to fix it:</strong> add a "Legacy history" link or report
+on the customer form, train the key users, and mention the archive
+location in the go-live announcement.</p>
+<h4 id="4-sensitive-data-moved-inside-notes">4. Sensitive data moved
+inside notes</h4>
+<p><strong>What you see:</strong> a compliance review finds PAN numbers
+and bank account details inside the migrated notes.</p>
+<p><strong>Why it happens:</strong> for years, users typed these details
+into notes in the old system. "Migrate everything" copied them as they
+were.</p>
+<p><strong>How to fix it:</strong></p>
+<ol type="1">
+<li>In staging, before loading, scan free-text columns for patterns like
+PAN, account numbers and card numbers.</li>
+<li>Agree with compliance on what to do: hide part of the value, remove
+it, or keep that note only in the archive.</li>
+<li>Add this check to every future load.</li>
+</ol>
+<h4 id="5-940-owners-who-dont-exist">5. 940 owners who don't exist</h4>
+<p><strong>What you see:</strong> the load fails on owner lookups. Or
+thousands of records end up owned by one integration user.</p>
+<p><strong>Why it happens:</strong> records owned by people who left the
+bank cannot simply be given to them in Dataverse.</p>
+<p><strong>How to fix it:</strong> decide the owner rules during this
+planning step. For example: the current branch manager, a team per
+branch, or a "Legacy" team. Then map them in Part 2. Don't let the load
+tool decide for you.</p>
+<h4 id="6-we-need-the-audit-history-in-dynamics">6. "We need the audit
+history in Dynamics"</h4>
+<p><strong>What you see:</strong> compliance asks to see the full change
+history of every loan inside the new system.</p>
+<p><strong>Why it happens:</strong> nobody checked this request against
+what the platform allows.</p>
+<p><strong>How to fix it:</strong> explain early that audit records
+cannot be created through the API. Offer the archive with a search
+report, or a custom "Legacy change history" table for only the few
+fields that really matter.</p>
+<h3 id="using-ai-in-migration-planning">Using AI in migration
+planning</h3>
+<p>AI is good at turning numbers into clear findings, and at writing
+repetitive SQL. It is weak at knowing your business and your legal
+rules.</p>
+<h4 id="where-ai-helps">Where AI helps</h4>
+<ul>
+<li><strong>Writing profiling SQL</strong> for each table, from its list
+of columns.</li>
+<li><strong>Summarising</strong> a profiling workbook into a one-page
+note for business readers.</li>
+<li><strong>Spotting risky columns</strong>: columns that hold more than
+one thing, or sensitive data, using column names and a few made-up
+sample values.</li>
+<li><strong>Drafting rules</strong> in business language from your
+numbers.</li>
+</ul>
+<h4 id="prompts-that-work-copy-and-change-them">Prompts that work (copy
+and change them)</h4>
+<pre class="text"><code>Here is the column list of a legacy SQL Server table src.customer
+(name, type, nullable). Write T-SQL profiling queries for: row count,
+null and empty rate per column, distinct count per column, min/max of
+date columns, and duplicates on pan and mobile. Return one result set
+per query, ready to paste into a workbook.</code></pre>
+<pre class="text"><code>Here are profiling results for a CRM migration (tables, row counts,
+activity bands, status counts). Propose migrate / archive / leave
+behind rules in business language, each with its row count, and list
+the questions the business owner must answer before signing.</code></pre>
+<pre class="text"><code>Here are column names and 5 anonymised sample values per column for a
+legacy notes table. Flag columns likely to contain personal or
+financial data, and suggest SQL patterns to find PAN numbers and bank
+account numbers in free text.</code></pre>
+<h4 id="where-ai-goes-wrong">Where AI goes wrong</h4>
+<ul>
+<li>It thinks <strong>"keep everything"</strong> is the safe answer,
+because it cannot see the cost, the load time or the compliance
+risk.</li>
+<li>It writes SQL that <strong>looks right but reads the whole
+table</strong>, even a 38-million-row one. Always check the query, and
+run it only on staging.</li>
+<li>It <strong>does not know your retention policy</strong>. Every
+"leave behind" rule needs a real person and a policy check.</li>
+</ul>
+<p><strong>Never paste real customer data</strong> (names, PAN, phone
+numbers, notes) into an outside AI tool. Column names, counts and
+made-up samples are enough.</p>
+<h3 id="checklist">Checklist</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"/>Raw copy of every old table in a SQL
+Server staging database</label></li>
+<li><label><input type="checkbox"/>Rows and size counted for every
+table</label></li>
+<li><label><input type="checkbox"/>Customers, loans and notes grouped
+by last activity (2, 5, 7+ years)</label></li>
+<li><label><input type="checkbox"/>Empty fields and duplicates checked
+for important columns</label></li>
+<li><label><input type="checkbox"/>Users who left counted, with the
+records they own</label></li>
+<li><label><input type="checkbox"/>Free text checked for sensitive
+data</label></li>
+<li><label><input type="checkbox"/>Rules for every table, in business
+words, each with a row count</label></li>
+<li><label><input type="checkbox"/>Archive location chosen, with access
+and an owner</label></li>
+<li><label><input type="checkbox"/>Platform limits explained (audit
+history, owners, created dates)</label></li>
+<li><label><input type="checkbox"/>Migration Scope Agreement signed by
+the business, compliance and the migration lead</label></li>
+</ul>
+<h3 id="interview-questions-with-simple-strong-answers">Interview
+questions, with simple strong answers</h3>
+<p><strong>1. The client says "migrate everything". What do you
+do?</strong></p>
+<p>I don't argue. I measure. I copy the data to a staging database and
+check it by activity, status and completeness. Then I show the business
+what each part costs in rows, load time and storage. They choose move,
+archive or leave behind for each rule, and they sign it.</p>
+<p><strong>2. Why check the data in a staging database and not in the
+old system?</strong></p>
+<p>Three reasons. It doesn't slow down users who still work in the old
+system. The data doesn't change while I measure it. And later, the same
+staging database holds my transformations and my final checks.</p>
+<p><strong>3. Can you migrate audit history into Dataverse?</strong></p>
+<p>Not as real audit records, because they cannot be created through the
+API. I would archive it with a search report, or put the few important
+fields into a custom history table.</p>
+<p><strong>4. What is the difference between archiving and deleting old
+data?</strong></p>
+<p>Archived data is kept read-only and can still be found, for business
+or legal reasons. Data we leave behind is deleted after sign-off, as per
+the retention policy. Both are business decisions, written down with row
+counts.</p>
+<p><strong>5. How does scope affect the go-live weekend?</strong></p>
+<p>Load time depends on the number of rows and their links. Reducing the
+scope is usually the biggest single way to make the final load and
+checks fit inside the weekend.</p>
+<h3 id="simple-rule-to-remember">Simple rule to remember</h3>
+<p><strong>Check the data first. Then let the business decide: move what
+people will work on, archive what must be kept, and leave behind only
+what someone signs off.</strong></p>
+<h3 id="next-in-the-series">Next in the series</h3>
+<p><strong>Part 2: Mapping old data to Dataverse.</strong> Fields,
+choice values, lookups and users who have left, with a mapping document
+built in SQL.</p>
+<hr/><p><em>Originally published on my blog, with the full series: <a href="https://krish8714.github.io">krish8714.github.io</a></em></p></body></html>
